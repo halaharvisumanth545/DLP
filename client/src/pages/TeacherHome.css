@@ -1,0 +1,63 @@
+.teacher-layout {
+    min-height: 100vh;
+    background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #0f172a 100%);
+}
+
+.teacher-main {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: calc(100vh - 64px);
+    padding: 40px;
+}
+
+.coming-soon {
+    text-align: center;
+    max-width: 500px;
+}
+
+.coming-soon-icon {
+    font-size: 4rem;
+    display: block;
+    margin-bottom: 16px;
+}
+
+.coming-soon h1 {
+    color: #fff;
+    font-size: 2.5rem;
+    margin-bottom: 8px;
+}
+
+.coming-soon p {
+    color: #a78bfa;
+    font-size: 1.25rem;
+    margin-bottom: 32px;
+}
+
+.features-preview {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    padding: 24px;
+    text-align: left;
+}
+
+.features-preview h3 {
+    color: #fff;
+    margin-bottom: 16px;
+}
+
+.features-preview ul {
+    list-style: none;
+    padding: 0;
+}
+
+.features-preview li {
+    color: #d1d5db;
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.features-preview li:last-child {
+    border-bottom: none;
+}

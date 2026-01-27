@@ -1,0 +1,404 @@
+import api, { endpoints } from "./api";
+import { getCurrentUser } from "./auth";
+
+// ============================================
+// MOCK MODE - For testing without backend/DB
+// ============================================
+const MOCK_MODE = false; // Set to false when MongoDB is ready
+
+// Mock data for testing
+const MOCK_SYLLABI = [
+    {
+        _id: "syllabus-001",
+        fileName: "Data Structures & Algorithms",
+        content: "Sample syllabus content...",
+        topics: [
+            { name: "Arrays and Linked Lists", difficulty: "easy" },
+            { name: "Stacks and Queues", difficulty: "easy" },
+            { name: "Trees and Graphs", difficulty: "medium" },
+            { name: "Sorting Algorithms", difficulty: "medium" },
+            { name: "Dynamic Programming", difficulty: "hard" },
+        ],
+        status: "parsed",
+        createdAt: new Date().toISOString(),
+    },
+    {
+        _id: "syllabus-002",
+        fileName: "Web Development",
+        content: "Web development syllabus...",
+        topics: [
+            { name: "HTML & CSS Basics", difficulty: "easy" },
+            { name: "JavaScript Fundamentals", difficulty: "easy" },
+            { name: "React Components", difficulty: "medium" },
+            { name: "Node.js & Express", difficulty: "medium" },
+            { name: "Database Integration", difficulty: "hard" },
+        ],
+        status: "parsed",
+        createdAt: new Date().toISOString(),
+    },
+];
+
+const MOCK_ANALYTICS = {
+    totalSessions: 15,
+    totalQuestionsAttempted: 150,
+    overallAccuracy: 72.5,
+    avgTimePerQuestion: 45,
+    streaks: { current: 3, longest: 7 },
+    difficultyPerformance: {
+        easy: { attempted: 50, correct: 45, accuracy: 90 },
+        medium: { attempted: 60, correct: 42, accuracy: 70 },
+        hard: { attempted: 40, correct: 20, accuracy: 50 },
+    },
+};
+
+const MOCK_WEAK_TOPICS = [
+    { topic: "Dynamic Programming", accuracy: 35, questionsAttempted: 20, improvementNeeded: "high" },
+    { topic: "Database Integration", accuracy: 45, questionsAttempted: 15, improvementNeeded: "high" },
+    { topic: "Trees and Graphs", accuracy: 55, questionsAttempted: 25, improvementNeeded: "medium" },
+];
+
+// ============================================
+// DASHBOARD
+// ============================================
+
+export async function getDashboard() {
+    if (MOCK_MODE) {
+        const user = getCurrentUser();
+        return {
+            user,
+            stats: {
+                totalSyllabi: MOCK_SYLLABI.length,
+                totalSessions: 15,
+                overallAccuracy: 72.5,
+                currentStreak: 3,
+            },
+            weakTopics: MOCK_WEAK_TOPICS.slice(0, 3),
+            recentSessions: [
+                { type: "practice", score: { percentage: 80 }, createdAt: new Date().toISOString() },
+                { type: "quiz", score: { percentage: 65 }, createdAt: new Date(Date.now() - 86400000).toISOString() },
+            ],
+        };
+    }
+    const response = await api.get(endpoints.student.dashboard);
+    return response.data;
+}
+
+// ============================================
+// SYLLABI
+// ============================================
+
+export async function getSyllabi() {
+    if (MOCK_MODE) {
+        return { syllabi: MOCK_SYLLABI };
+    }
+    const response = await api.get(endpoints.student.syllabi);
+    return response.data;
+}
+
+export async function getSyllabusById(id) {
+    if (MOCK_MODE) {
+        const syllabus = MOCK_SYLLABI.find((s) => s._id === id);
+        return { syllabus };
+    }
+    const response = await api.get(`${endpoints.student.syllabi}/${id}`);
+    return response.data;
+}
+
+export async function uploadSyllabus(fileName, content, fileData = null) {
+    if (MOCK_MODE) {
+        const newSyllabus = {
+            _id: `syllabus-${Date.now()}`,
+            fileName,
+            content,
+            topics: [
+                { name: "Topic 1 (Auto-generated)", difficulty: "easy" },
+                { name: "Topic 2 (Auto-generated)", difficulty: "medium" },
+                { name: "Topic 3 (Auto-generated)", difficulty: "hard" },
+            ],
+            status: "parsed",
+            createdAt: new Date().toISOString(),
+        };
+        MOCK_SYLLABI.push(newSyllabus);
+        return { syllabus: newSyllabus, message: "Syllabus uploaded (Mock Mode)" };
+    }
+
+    // If fileData is provided (PDF), send it; otherwise send text content
+    const payload = fileData
+        ? { fileName, pdfBase64: fileData.base64 }
+        : { fileName, content };
+
+    const response = await api.post(endpoints.student.uploadSyllabus, payload);
+    return response.data;
+}
+
+// ============================================
+// STUDY MATERIAL
+// ============================================
+
+export async function generateMaterial(syllabusId, topic, mode = "intermediate") {
+    if (MOCK_MODE) {
+        return {
+            material: {
+                _id: `material-${Date.now()}`,
+                topic,
+                mode,
+                content: `This is AI-generated study material for "${topic}" in ${mode} mode. In a real scenario, this would contain comprehensive study content generated by OpenAI.`,
+                sections: [
+                    {
+                        title: "Introduction",
+                        content: `Welcome to the study material for ${topic}. This section provides an overview of the key concepts.`,
+                        keyPoints: ["Key concept 1", "Key concept 2", "Key concept 3"],
+                    },
+                    {
+                        title: "Core Concepts",
+                        content: "This section dives deeper into the fundamental principles and theories.",
+                        keyPoints: ["Detailed explanation of principles", "Real-world applications", "Common pitfalls to avoid"],
+                    },
+                    {
+                        title: "Practice Examples",
+                        content: "Work through these examples to solidify your understanding.",
+                        keyPoints: ["Example problem 1", "Example problem 2", "Step-by-step solutions"],
+                    },
+                ],
+                createdAt: new Date().toISOString(),
+            },
+        };
+    }
+    const response = await api.post(endpoints.student.generateMaterial, { syllabusId, topic, mode });
+    return response.data;
+}
+
+// Generate comprehensive material with parallel API calls per subtopic
+export async function generateComprehensiveMaterial(topic, subtopics = [], mode = "intermediate") {
+    if (MOCK_MODE) {
+        // Simulate delay for each subtopic
+        await new Promise(resolve => setTimeout(resolve, 500 * subtopics.length));
+
+        return {
+            material: {
+                _id: `comprehensive-${Date.now()}`,
+                topic,
+                mode,
+                subtopicsCount: subtopics.length,
+                successCount: subtopics.length,
+                content: subtopics.map(st => `Content for ${st}...`).join('\n\n'),
+                sections: subtopics.map((subtopic, index) => ({
+                    title: subtopic,
+                    overview: `This section covers ${subtopic} as part of ${topic}.`,
+                    content: `Detailed explanation of ${subtopic}. This includes key concepts, practical applications, and examples that help you understand the material better.`,
+                    keyPoints: [
+                        `Key point 1 for ${subtopic}`,
+                        `Key point 2 for ${subtopic}`,
+                        `Key point 3 for ${subtopic}`,
+                    ],
+                    examples: [
+                        `Example 1 demonstrating ${subtopic}`,
+                        `Example 2 applying ${subtopic}`,
+                    ],
+                })),
+                createdAt: new Date().toISOString(),
+            },
+        };
+    }
+    const response = await api.post(endpoints.openai.generateComprehensiveMaterial, { topic, subtopics, mode });
+    return response.data;
+}
+
+export async function getMaterialById(id) {
+    if (MOCK_MODE) {
+        return { material: { _id: id, topic: "Sample Topic", content: "Sample content..." } };
+    }
+    const response = await api.get(`${endpoints.student.materials}/${id}`);
+    return response.data;
+}
+
+// ============================================
+// SESSIONS
+// ============================================
+
+export async function startSession(config) {
+    if (MOCK_MODE) {
+        const mockQuestions = config.topics.slice(0, config.questionCount || 5).flatMap((topic, topicIndex) => [
+            {
+                questionId: `q-${topicIndex}-1`,
+                text: `What is the main concept of ${topic}?`,
+                topic,
+                difficulty: "easy",
+                marks: 2,
+                options: [
+                    { label: "A", text: "First option" },
+                    { label: "B", text: "Second option (correct)" },
+                    { label: "C", text: "Third option" },
+                    { label: "D", text: "Fourth option" },
+                ],
+                correctAnswer: "B",
+            },
+            {
+                questionId: `q-${topicIndex}-2`,
+                text: `Which of the following best describes ${topic}?`,
+                topic,
+                difficulty: "medium",
+                marks: 3,
+                options: [
+                    { label: "A", text: "Option A (correct)" },
+                    { label: "B", text: "Option B" },
+                    { label: "C", text: "Option C" },
+                    { label: "D", text: "Option D" },
+                ],
+                correctAnswer: "A",
+            },
+        ]);
+
+        return {
+            session: {
+                id: `session-${Date.now()}`,
+                type: config.type,
+                questions: mockQuestions.slice(0, config.questionCount || 10),
+                totalTimeAllowed: config.timeLimit || null,
+                answers: [],
+            },
+        };
+    }
+    const response = await api.post(endpoints.student.startSession, config);
+    return response.data;
+}
+
+export async function submitAnswer(sessionId, answerData) {
+    if (MOCK_MODE) {
+        const isCorrect = Math.random() > 0.4; // 60% chance correct for demo
+        return {
+            isCorrect,
+            correctAnswer: "B",
+            explanation: isCorrect
+                ? "Great job! You selected the correct answer."
+                : "The correct answer was B. Here's why: This is a sample explanation for the mock mode.",
+        };
+    }
+    const response = await api.post(`${endpoints.student.sessions}/${sessionId}/answer`, answerData);
+    return response.data;
+}
+
+export async function completeSession(sessionId) {
+    if (MOCK_MODE) {
+        return { message: "Session completed (Mock Mode)" };
+    }
+    const response = await api.post(`${endpoints.student.sessions}/${sessionId}/complete`);
+    return response.data;
+}
+
+export async function getSessionResult(sessionId) {
+    if (MOCK_MODE) {
+        return {
+            result: {
+                _id: sessionId,
+                type: "practice",
+                score: { obtained: 15, total: 20, percentage: 75 },
+                accuracy: 75,
+                timeSpent: { total: 600, average: 30 },
+                questionBreakdown: { total: 10, correct: 7, incorrect: 2, skipped: 1 },
+                difficultyAnalysis: {
+                    easy: { attempted: 4, correct: 4, accuracy: 100 },
+                    medium: { attempted: 4, correct: 2, accuracy: 50 },
+                    hard: { attempted: 2, correct: 1, accuracy: 50 },
+                },
+                topicPerformance: [
+                    { topic: "Arrays", attempted: 3, correct: 2, accuracy: 67, timeSpent: 120 },
+                    { topic: "Linked Lists", attempted: 3, correct: 3, accuracy: 100, timeSpent: 90 },
+                    { topic: "Trees", attempted: 4, correct: 2, accuracy: 50, timeSpent: 200 },
+                ],
+            },
+        };
+    }
+    const response = await api.get(`${endpoints.student.sessions}/${sessionId}/result`);
+    return response.data;
+}
+
+// ============================================
+// ANALYTICS
+// ============================================
+
+export async function getAnalytics() {
+    if (MOCK_MODE) {
+        return { analytics: MOCK_ANALYTICS };
+    }
+    const response = await api.get(endpoints.student.analytics);
+    return response.data;
+}
+
+export async function getWeakTopics() {
+    if (MOCK_MODE) {
+        return { weakTopics: MOCK_WEAK_TOPICS };
+    }
+    const response = await api.get(endpoints.student.weakTopics);
+    return response.data;
+}
+
+export async function getProgressHistory(days = 30) {
+    if (MOCK_MODE) {
+        const history = [];
+        for (let i = days; i >= 0; i--) {
+            const date = new Date(Date.now() - i * 86400000);
+            history.push({
+                date: date.toISOString().split("T")[0],
+                avgAccuracy: 50 + Math.random() * 40,
+                sessionsCompleted: Math.floor(Math.random() * 3),
+            });
+        }
+        return { progressHistory: history };
+    }
+    const response = await api.get(`${endpoints.student.progressHistory}?days=${days}`);
+    return response.data;
+}
+
+export async function getTopicPerformance() {
+    if (MOCK_MODE) {
+        return {
+            topicPerformance: MOCK_SYLLABI.flatMap((s) =>
+                s.topics.map((t) => ({
+                    topic: t.name,
+                    totalAttempted: Math.floor(Math.random() * 50) + 10,
+                    totalCorrect: Math.floor(Math.random() * 40) + 5,
+                    accuracy: 50 + Math.random() * 40,
+                    avgTimePerQuestion: 30 + Math.floor(Math.random() * 30),
+                }))
+            ),
+        };
+    }
+    const response = await api.get(endpoints.student.topicPerformance);
+    return response.data;
+}
+
+export async function getSessionHistory(params = {}) {
+    if (MOCK_MODE) {
+        return {
+            sessions: [
+                { _id: "s1", type: "practice", score: { percentage: 80 }, createdAt: new Date().toISOString() },
+                { _id: "s2", type: "quiz", score: { percentage: 65 }, createdAt: new Date(Date.now() - 86400000).toISOString() },
+                { _id: "s3", type: "test", score: { percentage: 72 }, createdAt: new Date(Date.now() - 172800000).toISOString() },
+            ],
+            pagination: { page: 1, limit: 10, total: 3 },
+        };
+    }
+    const response = await api.get(endpoints.student.sessionHistory, { params });
+    return response.data;
+}
+
+// ============================================
+// OPENAI DIRECT CALLS
+// ============================================
+
+export async function generateQuestionsAI(topic, count = 5, difficulty = "mixed") {
+    if (MOCK_MODE) {
+        return { message: "AI generation not available in mock mode" };
+    }
+    const response = await api.post(endpoints.openai.generateQuestions, { topic, count, difficulty });
+    return response.data;
+}
+
+export async function analyzeWeakness(performance) {
+    if (MOCK_MODE) {
+        return { analysis: "Mock analysis: Focus on improving weak areas." };
+    }
+    const response = await api.post(endpoints.openai.analyzeWeakness, { performance });
+    return response.data;
+}

@@ -1,0 +1,23 @@
+.student-layout {
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #0f172a 100%);
+}
+
+.student-content {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+}
+
+.student-main {
+    flex: 1;
+    padding: 32px;
+    height: 100%;
+    overflow-y: auto;
+    position: relative;
+    scroll-behavior: smooth;
+}

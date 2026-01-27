@@ -1,0 +1,296 @@
+.view-material-container {
+    max-width: 100%;
+    margin: 0;
+    padding: 0;
+    height: 100vh;
+    overflow-y: auto;
+    background: linear-gradient(135deg, var(--bg-dark) 0%, var(--bg-dark-secondary) 50%, var(--bg-dark) 100%);
+    display: flex;
+    justify-content: center;
+}
+
+.view-content-wrapper {
+    max-width: 900px;
+    width: 100%;
+    padding: 40px 20px;
+}
+
+.back-btn {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: #fff;
+    cursor: pointer;
+    font-size: 1rem;
+    margin-bottom: 24px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 20px;
+    border-radius: 8px;
+    transition: all 0.2s;
+    font-weight: 500;
+}
+
+.back-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+    transform: translateX(-4px);
+}
+
+/* Custom Scrollbar for View Material */
+.view-material-container::-webkit-scrollbar {
+    width: 14px;
+    /* Increased width */
+}
+
+.view-material-container::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.view-material-container::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 7px;
+    border: 3px solid transparent;
+    /* Creates padding around thumb */
+    background-clip: content-box;
+}
+
+.view-material-container::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(255, 255, 255, 0.3);
+}
+
+.view-paper {
+    background: #fff;
+    /* White paper look */
+    color: #333;
+    /* Dark text for readability */
+    padding: 60px;
+    border-radius: 8px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    line-height: 1.8;
+    text-align: justify;
+    /* Justify content */
+}
+
+/* Dark mode overrides if the app is dark? 
+   The prompt asked for "similar page" to PDF. The PDF is white paper style.
+   We should probably keep it white paper style even in dark app to match the "Document" feel.
+*/
+
+.view-paper h1 {
+    color: #1a1a2e;
+    border-bottom: 3px solid #6366f1;
+    padding-bottom: 15px;
+    font-size: 28px;
+    margin-bottom: 20px;
+    margin-top: 0;
+}
+
+.view-meta {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 40px;
+    color: #666;
+    font-size: 0.9rem;
+    flex-wrap: wrap;
+}
+
+.meta-tag {
+    background: #f3f4f6;
+    padding: 6px 16px;
+    border-radius: 20px;
+}
+
+.view-toc {
+    background: #f8fafc;
+    padding: 24px;
+    border-radius: 12px;
+    margin-bottom: 40px;
+    border: 1px solid #e2e8f0;
+}
+
+.view-toc h3 {
+    margin: 0 0 16px 0;
+    color: #1e293b;
+    font-size: 1.2rem;
+}
+
+.view-toc ol {
+    margin: 0;
+    padding-left: 24px;
+}
+
+.view-toc li {
+    margin: 8px 0;
+    color: #4f46e5;
+    font-weight: 500;
+}
+
+.view-section {
+    margin-bottom: 50px;
+}
+
+.view-section-header {
+    background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+    color: white;
+    padding: 16px 24px;
+    border-radius: 12px 12px 0 0;
+}
+
+.view-section-header h2 {
+    margin: 0;
+    font-size: 1.3rem;
+    font-weight: 600;
+}
+
+.view-section-body {
+    border: 1px solid #e2e8f0;
+    border-top: none;
+    border-radius: 0 0 12px 12px;
+    padding: 32px;
+    background: #fafafa;
+}
+
+.view-overview {
+    font-style: italic;
+    color: #555;
+    border-left: 3px solid #6366f1;
+    padding-left: 20px;
+    margin-bottom: 24px;
+    font-size: 1.05rem;
+}
+
+/* Headings within content */
+.view-h3 {
+    color: #4f46e5;
+    font-size: 1.2rem;
+    font-weight: 600;
+    margin: 32px 0 16px 0;
+    border-bottom: 2px solid #e2e8f0;
+    padding-bottom: 8px;
+}
+
+.view-h4 {
+    color: #4b5563;
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin: 24px 0 12px 0;
+}
+
+/* Lists */
+.view-list {
+    margin: 16px 0 24px 0;
+    padding-left: 24px;
+}
+
+.view-list li {
+    margin: 8px 0;
+    line-height: 1.7;
+}
+
+/* Boxes (Key Points / Examples) */
+.view-box {
+    padding: 24px;
+    border-radius: 12px;
+    margin-top: 24px;
+}
+
+.view-box.view-key-points {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.view-box.view-key-points h4 {
+    color: #4f46e5;
+    margin: 0 0 16px 0;
+    font-size: 1rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.view-box.view-key-points li {
+    color: #374151;
+    /* Dark gray for visibility on white */
+}
+
+.view-box.examples {
+    background: #eff6ff;
+    /* blue-50 */
+    border-left: 4px solid #3b82f6;
+}
+
+.view-box.examples h4 {
+    color: #1e40af;
+    margin: 0 0 16px 0;
+}
+
+.view-box ul {
+    margin: 0;
+    padding-left: 24px;
+}
+
+.view-box li {
+    margin: 8px 0;
+}
+
+/* Code Blocks */
+.code-block-view {
+    position: relative;
+    margin: 24px 0;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #1e1e2e;
+}
+
+.code-label {
+    background: #6366f1;
+    color: white;
+    padding: 4px 12px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    display: inline-block;
+}
+
+.code-block-view pre {
+    margin: 0;
+    padding: 20px;
+    overflow-x: auto;
+    background: #1e1e2e;
+    color: #e6edf3;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 0.9rem;
+    line-height: 1.6;
+}
+
+.inline-code {
+    background: #f1f5f9;
+    color: #4f46e5;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: 0.9em;
+    border: 1px solid #e2e8f0;
+}
+
+.view-footer {
+    margin-top: 60px;
+    padding-top: 24px;
+    border-top: 1px solid #e2e8f0;
+    text-align: center;
+    color: #94a3b8;
+    font-size: 0.85rem;
+}
+
+.view-loading,
+.view-error {
+    text-align: center;
+    padding: 60px;
+    color: #fff;
+    font-size: 1.2rem;
+}
+
+.view-loading .spinner {
+    margin: 0 auto 20px;
+}
