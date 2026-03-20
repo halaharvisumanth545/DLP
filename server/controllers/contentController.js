@@ -67,11 +67,11 @@ export async function uploadSyllabus(req, res) {
 // Generate study material for a topic
 export async function generateStudyMaterial(req, res) {
     try {
-        const { syllabusId, topic, mode = "intermediate" } = req.body;
+        const { syllabusId, topic, subtopic, mode = "intermediate" } = req.body;
         const userId = req.user.userId;
 
-        if (!syllabusId || !topic) {
-            return res.status(400).json({ error: "Syllabus ID and topic are required" });
+        if (!syllabusId || !topic || !subtopic) {
+            return res.status(400).json({ error: "Syllabus ID, topic, and exactly one subtopic are required" });
         }
 
         // Verify syllabus belongs to user
@@ -81,11 +81,12 @@ export async function generateStudyMaterial(req, res) {
         }
 
         let material = null;
+        const scopedTopic = `${topic} - ${subtopic}`;
 
         if (!material) {
             // Generate new content using OpenAI and RAG
             const generatedContent = await generateStudyContent(
-                topic, 
+                scopedTopic,
                 mode, 
                 syllabus.originalContent, 
                 { userId, syllabusId }
@@ -94,7 +95,7 @@ export async function generateStudyMaterial(req, res) {
             const materialData = {
                 userId,
                 syllabusId,
-                topic,
+                topic: scopedTopic,
                 mode,
                 content: generatedContent.content,
                 sections: generatedContent.sections,

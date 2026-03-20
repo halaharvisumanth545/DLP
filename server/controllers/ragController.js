@@ -95,7 +95,7 @@ export async function generateWithRAG(req, res) {
         if (syllabusId) filter.syllabusId = syllabusId;
         if (textbookId) filter.textbookId = textbookId;
 
-        const chunks = await retrieveRelevantChunks(topic, filter, 8);
+        const chunks = await retrieveRelevantChunks(topic, filter, 8, { failSilently: true });
 
         let textbookContext = "";
         if (chunks.length > 0) {

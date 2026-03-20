@@ -4,6 +4,7 @@ import { tmpdir } from "os";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 
+import OpenAI from "openai";
 import { Pinecone } from "@pinecone-database/pinecone";
 import { Textbook } from "../models/Textbook.js";
 import dotenv from "dotenv";
@@ -17,15 +18,29 @@ const __dirname = dirname(__filename);
 const pinecone = process.env.PINECONE_API_KEY
     ? new Pinecone({ apiKey: process.env.PINECONE_API_KEY })
     : null;
+const openai = process.env.OPENAI_API_KEY
+    ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+    : null;
 
 const PINECONE_INDEX_NAME = process.env.PINECONE_INDEX_NAME || "dlp";
 const PINECONE_NAMESPACE = process.env.PINECONE_NAMESPACE || "";
-const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || "http://localhost:11434";
-const EMBEDDING_MODEL = process.env.OLLAMA_EMBED_MODEL || "mxbai-embed-large:latest";
-const EMBEDDING_DIM = 1024;
+const EMBEDDING_MODEL = process.env.OPENAI_EMBED_MODEL || "text-embedding-3-small";
+const EMBEDDING_DIM = Number(process.env.OPENAI_EMBED_DIM || 1536);
 const CHUNK_SIZE = 700;
 const CHUNK_OVERLAP = 80;
 const CHAR_PER_TOKEN = 4;
+
+function extractErrorMessage(error) {
+    if (!error) return "Unknown error";
+    if (typeof error.message === "string" && error.message.trim()) return error.message;
+    return String(error);
+}
+
+function ensureEmbeddingClient() {
+    if (!openai) {
+        throw new Error("OpenAI API key not configured for embeddings. Set OPENAI_API_KEY in server/.env.");
+    }
+}
 
 // ─── Pinecone Index ────────────────────────────────────────────────
 async function getPineconeIndex() {
@@ -52,18 +67,45 @@ async function getPineconeIndex() {
     return PINECONE_NAMESPACE ? idx.namespace(PINECONE_NAMESPACE) : idx;
 }
 
-// ─── Embed (Ollama) ────────────────────────────────────────────────
-async function embedText(text) {
-    const response = await fetch(`${OLLAMA_BASE_URL}/api/embeddings`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: EMBEDDING_MODEL, prompt: text }),
-    });
-    if (!response.ok) {
-        throw new Error("Ollama embedding failed: " + response.statusText);
+// ─── Embed (OpenAI) ────────────────────────────────────────────────
+async function embedTexts(texts) {
+    ensureEmbeddingClient();
+
+    if (!Array.isArray(texts) || texts.length === 0) {
+        return [];
     }
-    const data = await response.json();
-    return data.embedding;
+
+    try {
+        const response = await openai.embeddings.create({
+            model: EMBEDDING_MODEL,
+            input: texts,
+            dimensions: EMBEDDING_DIM,
+            encoding_format: "float",
+        });
+
+        const embeddings = response.data.map(function (item) {
+            return item.embedding;
+        });
+
+        if (embeddings.length !== texts.length) {
+            throw new Error("OpenAI embeddings response count did not match the input count.");
+        }
+
+        for (var i = 0; i < embeddings.length; i++) {
+            if (!Array.isArray(embeddings[i]) || embeddings[i].length !== EMBEDDING_DIM) {
+                throw new Error("OpenAI embedding response did not include a valid " + EMBEDDING_DIM + "-dimension vector.");
+            }
+        }
+
+        return embeddings;
+    } catch (error) {
+        throw new Error("OpenAI embedding request failed: " + extractErrorMessage(error));
+    }
+}
+
+async function embedText(text) {
+    var embeddings = await embedTexts([text]);
+    return embeddings[0];
 }
 
 // ─── Extract text via child process ────────────────────────────────
@@ -189,7 +231,7 @@ export async function ingestTextbook(filePath, fileName, userId, syllabusId) {
         }
 
         // Step 3: Embed and upsert to Pinecone
-        console.log("[RAG] Step 3/3: Embedding & upserting " + chunks.length + " chunks to Pinecone...");
+        console.log("[RAG] Step 3/3: Creating OpenAI embeddings and upserting " + chunks.length + " chunks to Pinecone...");
         var index = await getPineconeIndex();
         var textbookId = textbook._id.toString();
 
@@ -199,13 +241,15 @@ export async function ingestTextbook(filePath, fileName, userId, syllabusId) {
         for (var i = 0; i < chunks.length; i += BATCH_SIZE) {
             var batch = chunks.slice(i, i + BATCH_SIZE);
             var vectors = [];
+            var embeddings = await embedTexts(batch.map(function (chunk) {
+                return chunk.text;
+            }));
 
             for (var j = 0; j < batch.length; j++) {
                 var chunk = batch[j];
-                var embedding = await embedText(chunk.text);
                 vectors.push({
                     id: textbookId + "_" + chunk.chunkIndex,
-                    values: embedding,
+                    values: embeddings[j],
                     metadata: {
                         textbookId: textbookId,
                         userId: userId,
@@ -263,59 +307,71 @@ export async function ingestTextbook(filePath, fileName, userId, syllabusId) {
 }
 
 // ─── Search ────────────────────────────────────────────────────────
-export async function retrieveRelevantChunks(query, filter, topK) {
+export async function retrieveRelevantChunks(query, filter, topK, options) {
     topK = topK || 5;
     filter = filter || {};
+    options = options || {};
 
-    console.log("[RAG] Embedding query: \"" + query.substring(0, 80) + "...\"");
-    var queryEmbedding = await embedText(query);
+    var failSilently = options.failSilently === true;
 
-    var pineconeFilter = {};
-    if (filter.userId) pineconeFilter.userId = filter.userId;
-    if (filter.textbookId) pineconeFilter.textbookId = filter.textbookId;
-    if (filter.syllabusId) pineconeFilter.syllabusId = filter.syllabusId;
+    try {
+        console.log("[RAG] Embedding query with OpenAI " + EMBEDDING_MODEL + ": \"" + query.substring(0, 80) + "...\"");
+        var queryEmbedding = await embedText(query);
 
-    var index = await getPineconeIndex();
-    var hasFilter = Object.keys(pineconeFilter).length > 0;
+        var pineconeFilter = {};
+        if (filter.userId) pineconeFilter.userId = filter.userId;
+        if (filter.textbookId) pineconeFilter.textbookId = filter.textbookId;
+        if (filter.syllabusId) pineconeFilter.syllabusId = filter.syllabusId;
 
-    console.log("[RAG] Querying Pinecone with filter:", hasFilter ? JSON.stringify(pineconeFilter) : "none");
+        var index = await getPineconeIndex();
+        var hasFilter = Object.keys(pineconeFilter).length > 0;
 
-    var queryResult = await index.query({
-        vector: queryEmbedding,
-        topK: topK,
-        includeMetadata: true,
-        filter: hasFilter ? pineconeFilter : undefined,
-    });
+        console.log("[RAG] Querying Pinecone with filter:", hasFilter ? JSON.stringify(pineconeFilter) : "none");
 
-    // Fallback: if filtered query returned nothing, retry without filters
-    // (handles vectors ingested externally without user-specific metadata)
-    if ((!queryResult.matches || queryResult.matches.length === 0) && hasFilter) {
-        console.log("[RAG] No results with filters, retrying without filters...");
-        queryResult = await index.query({
+        var queryResult = await index.query({
             vector: queryEmbedding,
             topK: topK,
             includeMetadata: true,
+            filter: hasFilter ? pineconeFilter : undefined,
         });
+
+        // Fallback: if filtered query returned nothing, retry without filters
+        // (handles vectors ingested externally without user-specific metadata)
+        if ((!queryResult.matches || queryResult.matches.length === 0) && hasFilter) {
+            console.log("[RAG] No results with filters, retrying without filters...");
+            queryResult = await index.query({
+                vector: queryEmbedding,
+                topK: topK,
+                includeMetadata: true,
+            });
+        }
+
+        if (!queryResult.matches || queryResult.matches.length === 0) {
+            console.log("[RAG] No matching chunks found.");
+            return [];
+        }
+
+        var results = queryResult.matches.map(function (match) {
+            return {
+                text: match.metadata.text || "",
+                score: match.score,
+                fileName: match.metadata.fileName,
+                pageEstimate: match.metadata.pageEstimate,
+                textbookId: match.metadata.textbookId,
+                chunkIndex: match.metadata.chunkIndex,
+            };
+        });
+
+        console.log("[RAG] Retrieved " + results.length + " chunks (best: " + (results[0].score || 0).toFixed(4) + ")");
+        return results;
+    } catch (error) {
+        if (failSilently) {
+            console.warn("[RAG] Retrieval unavailable, continuing without textbook context:", extractErrorMessage(error));
+            return [];
+        }
+
+        throw error;
     }
-
-    if (!queryResult.matches || queryResult.matches.length === 0) {
-        console.log("[RAG] No matching chunks found.");
-        return [];
-    }
-
-    var results = queryResult.matches.map(function (match) {
-        return {
-            text: match.metadata.text || "",
-            score: match.score,
-            fileName: match.metadata.fileName,
-            pageEstimate: match.metadata.pageEstimate,
-            textbookId: match.metadata.textbookId,
-            chunkIndex: match.metadata.chunkIndex,
-        };
-    });
-
-    console.log("[RAG] Retrieved " + results.length + " chunks (best: " + (results[0].score || 0).toFixed(4) + ")");
-    return results;
 }
 
 // ─── Delete ────────────────────────────────────────────────────────

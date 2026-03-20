@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import { fetchSyllabi } from "../../store/studentSlice";
 import api, { endpoints } from "../../services/api";
-import { generateMaterial, generateComprehensiveMaterial } from "../../services/openai";
+import { generateComprehensiveMaterial } from "../../services/openai";
 import { STUDY_MODES } from "../../utils/constants";
 import { parseError, calculateReadingTime } from "../../utils/helpers";
 import CustomDropdown from "../common/CustomDropdown";
@@ -271,35 +271,36 @@ export default function StudyMaterial() {
             return;
         }
 
+        const topicObj = getSelectedTopicObj();
+        const availableSubtopics = (topicObj?.subtopics || [])
+            .map((subtopic) => typeof subtopic === "string" ? subtopic.trim() : "")
+            .filter(Boolean);
+
+        if (availableSubtopics.length === 0) {
+            setError("This topic does not have subtopics configured. Please update the syllabus before generating material.");
+            return;
+        }
+
+        if (!selectedSubtopic) {
+            setError("Please select exactly one subtopic to generate study material.");
+            return;
+        }
+
         setLoading(true);
         setError("");
         setMaterial(null);
         setLoadingStatus("Preparing content generation...");
 
         try {
-            const topicObj = getSelectedTopicObj();
-            let subtopicsToGenerate = [];
-            let generateTopicTitle = selectedTopic;
-            if(selectedSubtopic) {
-                subtopicsToGenerate = [selectedSubtopic];
-                generateTopicTitle = `${selectedTopic} - ${selectedSubtopic}`;
-            } else {
-                subtopicsToGenerate = topicObj?.subtopics || [];
-            }
-
-            // Use comprehensive generation for intermediate/pro modes with subtopics
-            if ((selectedMode === "intermediate" || selectedMode === "pro") && subtopicsToGenerate.length > 0) {
-                setLoadingStatus(`Generating content for ${subtopicsToGenerate.length} subtopic(s)...`);
-                const result = await generateComprehensiveMaterial(selectedSyllabus._id, generateTopicTitle, subtopicsToGenerate, selectedMode);
-                const materialData = result.material || result;
-                setMaterial(materialData);
-            } else {
-                // Use simple generation for short mode or topics without subtopics
-                setLoadingStatus("Generating study material...");
-                const result = await generateMaterial(selectedSyllabus._id, selectedTopic, selectedMode);
-                const materialData = result.material || result;
-                setMaterial(materialData);
-            }
+            setLoadingStatus(`Generating material for "${selectedSubtopic}"...`);
+            const result = await generateComprehensiveMaterial(
+                selectedSyllabus._id,
+                selectedTopic,
+                [selectedSubtopic],
+                selectedMode
+            );
+            const materialData = result.material || result;
+            setMaterial(materialData);
         } catch (err) {
             setError(parseError(err));
         } finally {
@@ -696,6 +697,10 @@ export default function StudyMaterial() {
     };
 
     const topicObj = getSelectedTopicObj();
+    const availableSubtopics = (topicObj?.subtopics || [])
+        .map((subtopic) => typeof subtopic === "string" ? subtopic.trim() : "")
+        .filter(Boolean);
+    const canGenerateMaterial = Boolean(selectedSyllabus && selectedTopic && selectedSubtopic && availableSubtopics.length > 0 && !loading);
 
     // Prepare dropdown options
     const syllabusOptions = syllabi.map(s => ({
@@ -762,17 +767,17 @@ export default function StudyMaterial() {
                                 </div>
                             )}
 
-                            {selectedTopic && topicObj?.subtopics?.length > 0 && (
+                            {selectedTopic && availableSubtopics.length > 0 && (
                                 <div style={{ marginTop: '16px' }}>
                                     <label style={{ display: 'block', marginBottom: '8px', color: '#a5b4fc', fontSize: '0.9rem', fontWeight: '600' }}>
-                                        Select Subtopic (Optional - Leave blank to generate entire topic)
+                                        Select Subtopic (Required)
                                     </label>
                                     <div className="topics-grid">
-                                        {topicObj.subtopics.map((st, index) => (
+                                        {availableSubtopics.map((st, index) => (
                                             <div
                                                 key={`st-${index}`}
                                                 className={`topic-chip ${selectedSubtopic === st ? "selected" : ""}`}
-                                                onClick={() => setSelectedSubtopic(selectedSubtopic === st ? "" : st)}
+                                                onClick={() => setSelectedSubtopic(st)}
                                             >
                                                 <span>{st}</span>
                                             </div>
@@ -780,34 +785,13 @@ export default function StudyMaterial() {
                                     </div>
                                 </div>
                             )}
-                        </div>
 
-                        {/* Show subtopics preview if available and no specific subtopic selected */}
-                        {topicObj?.subtopics?.length > 0 && !selectedSubtopic && (
-                            <div className="setup-section">
-                                <h3>Topic Scope</h3>
-                                <div className="subtopics-preview">
-                                    <label>Learning Path</label>
-                                    <div className="subtopics-timeline">
-                                        {topicObj.subtopics.map((st, i) => (
-                                            <div
-                                                className="subtopic-node"
-                                                key={i}
-                                                style={{ animationDelay: `${i * 0.15}s` }}
-                                            >
-                                                <div className="node-connector">
-                                                    <div className="node-dot"></div>
-                                                    {i < topicObj.subtopics.length - 1 && <div className="node-line" style={{ animationDelay: `${(i * 0.15) + 0.1}s` }}></div>}
-                                                </div>
-                                                <div className="node-content">
-                                                    <span className="node-text">{st}</span>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
+                            {selectedTopic && availableSubtopics.length === 0 && (
+                                <div className="alert alert-error" style={{ marginTop: "16px" }}>
+                                    This topic does not have subtopics yet. Add subtopics in the syllabus before generating study material.
                                 </div>
-                            </div>
-                        )}
+                            )}
+                        </div>
 
                         <div className="setup-section">
                             <h3>Depth & Detail</h3>
@@ -839,7 +823,7 @@ export default function StudyMaterial() {
                         <button
                             className="btn-primary btn-start quiz-start"
                             onClick={handleGenerate}
-                            disabled={loading}
+                            disabled={!canGenerateMaterial}
                         >
                             {loading ? (
                                 <>
@@ -847,7 +831,7 @@ export default function StudyMaterial() {
                                     {loadingStatus}
                                 </>
                             ) : (
-                                "Generate Study Material"
+                                "Generate Subtopic Material"
                             )}
                         </button>
                     </div>
@@ -970,4 +954,3 @@ export default function StudyMaterial() {
         </div>
     );
 }
-

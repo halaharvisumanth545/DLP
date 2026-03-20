@@ -1,82 +1,90 @@
-import { generateCompletion, generateJSON } from "../config/openai.js";
+import { generateJSON } from "../config/openai.js";
 import { retrieveRelevantChunks } from "../services/ragService.js";
+
+const MATERIAL_RELIABILITY_INSTRUCTIONS = `
+CRITICAL RELIABILITY REQUIREMENTS:
+- Every requested section and subsection must be fully written. Do not leave any heading, field, list, example, or explanation empty.
+- Never use placeholders such as "content here", "example", "...", "TBD", or generic filler.
+- The writing must be complete enough to render cleanly in the application without missing matter.
+- Each heading in the generated markdown must be followed by substantial explanatory content, not just a title.
+- When examples are requested, provide concrete examples, not vague references.
+- When code is requested, it must be internally consistent, syntactically credible, and aligned with the explanation.
+- If input and output are included, the output must exactly match the code example.
+- Before finalizing, self-check that all required JSON fields are populated with meaningful, non-empty content.`;
+
+function ensureMeaningfulString(value, label, minLength) {
+    if (typeof value !== "string" || value.trim().length < minLength) {
+        throw new Error(`${label} must contain at least ${minLength} meaningful characters.`);
+    }
+}
+
+function ensureStringArray(value, label, minItems) {
+    if (!Array.isArray(value) || value.length < minItems) {
+        throw new Error(`${label} must contain at least ${minItems} item(s).`);
+    }
+
+    value.forEach((item, index) => {
+        ensureMeaningfulString(item, `${label}[${index}]`, 3);
+    });
+}
+
+function ensureObjectArray(value, label, minItems) {
+    if (!Array.isArray(value) || value.length < minItems) {
+        throw new Error(`${label} must contain at least ${minItems} item(s).`);
+    }
+
+    value.forEach((item, index) => {
+        if (!item || typeof item !== "object" || Array.isArray(item)) {
+            throw new Error(`${label}[${index}] must be an object.`);
+        }
+    });
+}
+
+function validateConceptResult(result) {
+    ensureMeaningfulString(result.title, "title", 3);
+    ensureMeaningfulString(result.overview, "overview", 40);
+    ensureMeaningfulString(result.content, "content", 180);
+    ensureStringArray(result.keyPoints, "keyPoints", 3);
+}
+
+function validateCodeResult(result, minimumExamples) {
+    ensureObjectArray(result.codeExamples, "codeExamples", minimumExamples);
+
+    result.codeExamples.forEach((example, index) => {
+        ensureMeaningfulString(example.title, `codeExamples[${index}].title`, 3);
+        ensureMeaningfulString(example.language, `codeExamples[${index}].language`, 2);
+        ensureMeaningfulString(example.code, `codeExamples[${index}].code`, 20);
+        ensureMeaningfulString(example.input, `codeExamples[${index}].input`, 2);
+        ensureMeaningfulString(example.output, `codeExamples[${index}].output`, 2);
+        ensureMeaningfulString(example.explanation, `codeExamples[${index}].explanation`, 20);
+    });
+}
+
+function validateAdvancedResult(result) {
+    if (!result || typeof result !== "object" || !result.advanced || typeof result.advanced !== "object") {
+        throw new Error("advanced result is required.");
+    }
+
+    ensureStringArray(result.advanced.commonMistakes, "advanced.commonMistakes", 2);
+    ensureStringArray(result.advanced.bestPractices, "advanced.bestPractices", 2);
+    ensureMeaningfulString(result.advanced.performance, "advanced.performance", 40);
+    ensureStringArray(result.advanced.edgeCases, "advanced.edgeCases", 2);
+    ensureMeaningfulString(result.advanced.tips, "advanced.tips", 20);
+}
+
+function validateNoCodeResult(result, minimumExamples) {
+    ensureMeaningfulString(result.title, "title", 3);
+    ensureMeaningfulString(result.overview, "overview", 40);
+    ensureMeaningfulString(result.content, "content", 180);
+    ensureStringArray(result.keyPoints, "keyPoints", 3);
+    ensureStringArray(result.examples, "examples", minimumExamples);
+}
 
 // Generate study material using OpenAI (single API call - for short mode)
 export async function generateMaterial(req, res) {
     try {
-        const { topic, mode = "intermediate", context, syllabusId } = req.body;
-        const userId = req.user.userId;
-
-        if (!topic) {
-            return res.status(400).json({ error: "Topic is required" });
-        }
-
-        const modeDescriptions = {
-            short: "concise summary with key points (200-300 words total)",
-            intermediate: "detailed explanation with examples (500-700 words total)",
-            pro: "comprehensive deep-dive with advanced concepts (1000+ words total)",
-        };
-
-        // Retrieve context using RAG
-        console.log(`[Material] Retrieving RAG context for topic: ${topic}`);
-        const chunks = await retrieveRelevantChunks(topic, { userId, syllabusId }, 5);
-        const scrapedContext = chunks.map((c, i) => `--- Textbook Excerpt ${i + 1} (from "${c.fileName}", ~p.${c.pageEstimate}, relevance: ${(c.score * 100).toFixed(1)}%) ---\n${c.text}`).join("\n\n");
-
-        const prompt = `Generate educational study material about "${topic}" in ${modeDescriptions[mode]} format. Make it a nice and well-formatted document for student preparation.
-
-${context ? `Context from syllabus: ${context.substring(0, 500)}` : ""}
-
-Use the following excerpt(s) from the student's actual course textbook to ground your answer. Note: The material produced from this textbook context is very important for students, and it's very essential to generate coherent, high-quality content.
----START TEXTBOOK CONTEXT---
-${scrapedContext}
----END TEXTBOOK CONTEXT---
-
-Return a JSON object with this exact structure:
-{
-    "sections": [
-        {
-            "title": "Introduction/Overview",
-            "content": "Content for this section in markdown...",
-            "keyPoints": ["Key point 1", "Key point 2", "Key point 3"]
-        },
-        {
-            "title": "Key Concepts",
-            "content": "Content explaining key concepts...",
-            "keyPoints": ["Key point 1", "Key point 2"]
-        },
-        {
-            "title": "Detailed Explanation", 
-            "content": "In-depth explanation with examples...",
-            "keyPoints": ["Key point 1", "Key point 2"]
-        },
-        {
-            "title": "Summary/Key Takeaways",
-            "content": "Summary of the material...",
-            "keyPoints": ["Takeaway 1", "Takeaway 2"]
-        }
-    ]
-}
-
-Make sure each section has meaningful educational content. The content field should use Markdown formatting. Key points should be short, memorable bullet points.`;
-
-        const result = await generateJSON(prompt, {
-            maxTokens: mode === "pro" ? 1500 : mode === "intermediate" ? 800 : 400,
-        });
-
-        // Ensure we have a valid sections array
-        const sections = result.sections || [];
-
-        // Build a combined content string for reading time calculation
-        const fullContent = sections.map(s => s.content).join('\n\n');
-
-        res.json({
-            material: {
-                topic,
-                mode,
-                content: fullContent,
-                sections: sections,
-                createdAt: new Date().toISOString(),
-            }
+        res.status(400).json({
+            error: "Topic-level material generation is disabled. Please select exactly one subtopic and generate material for that subtopic only.",
         });
     } catch (error) {
         console.error("Generate material error:", error);
@@ -94,7 +102,20 @@ export async function generateComprehensiveMaterial(req, res) {
             return res.status(400).json({ error: "Topic is required" });
         }
 
-        const topicsToGenerate = subtopics.length > 0 ? subtopics : [topic];
+        const cleanedSubtopics = Array.isArray(subtopics)
+            ? subtopics.map((subtopic) => typeof subtopic === "string" ? subtopic.trim() : "").filter(Boolean)
+            : [];
+
+        if (cleanedSubtopics.length !== 1) {
+            return res.status(400).json({
+                error: "Please select exactly one subtopic. Topic-wide or multi-subtopic generation is not allowed.",
+            });
+        }
+
+        const selectedSubtopic = cleanedSubtopics[0];
+        const topicsToGenerate = [selectedSubtopic];
+        const materialTopic = `${topic} - ${selectedSubtopic}`;
+        const ragQuery = `${topic} - ${selectedSubtopic}`;
 
         // Use AI to classify which subtopics are code-intensive (single batched call)
         const classifyTopics = async (mainTopic, subtopicList) => {
@@ -157,8 +178,8 @@ Rules:
         const classificationMap = await classifyTopics(topic, topicsToGenerate);
 
         // Retrieve context using RAG
-        console.log(`[Comprehensive] Retrieving RAG context for topic: ${topic}`);
-        const chunks = await retrieveRelevantChunks(topic, { userId, syllabusId }, 8);
+        console.log(`[Comprehensive] Retrieving RAG context for subtopic: ${ragQuery}`);
+        const chunks = await retrieveRelevantChunks(ragQuery, { userId, syllabusId }, 8, { failSilently: true });
         const scrapedContext = chunks.map((c, i) => `--- Textbook Excerpt ${i + 1} (from "${c.fileName}", ~p.${c.pageEstimate}, relevance: ${(c.score * 100).toFixed(1)}%) ---\n${c.text}`).join("\n\n");
 
         // Build a reusable instruction block for all prompts
@@ -169,7 +190,7 @@ ${scrapedContext}
 ---END TEXTBOOK CONTEXT---
 `;
 
-        console.log(`Generating ${mode.toUpperCase()} material for "${topic}" with ${topicsToGenerate.length} subtopics`);
+        console.log(`Generating ${mode.toUpperCase()} material for "${materialTopic}"`);
         console.log(`  Classification results:`, classificationMap);
 
         // Execute subtopics sequentially with a 2-second delay to firmly avoid rate limit exhaustion
@@ -187,6 +208,7 @@ ${scrapedContext}
 Explain everything clearly and specifically.
 
 ${contextInstruction}
+${MATERIAL_RELIABILITY_INSTRUCTIONS}
 
 Write around ${config.words} words covering:
 1. What it is and why it matters
@@ -199,6 +221,7 @@ Write around ${config.words} words covering:
 Requirements:
 - ABSOLUTELY NO EMOJIS. Maintain a highly professional and authentic academic tone.
 - Format the content strictly using rich Markdown (## for headers, * for lists, bolding for emphasis). Do NOT use raw HTML.
+- The markdown content MUST include complete sections for definition, internal working, usage, advantages, disadvantages, and at least one concrete example.
 - **CRITICAL**: To avoid JSON formatting errors, you MUST NOT use backslashes (\\) in your LaTeX or anywhere in the string values.
 - Instead, use the placeholder "|||" for every single backslash (e.g. use "|||frac{1}{2}" instead of "\\frac{1}{2}" or "\\\\frac{1}{2}", and "|||begin" instead of "\\begin").
 
@@ -206,6 +229,7 @@ Return JSON: {"title":"${subtopic}","overview":"3-4 sentence intro","content":"W
                     : `Provide a clear explanation of "${subtopic}" (topic: "${topic}") in around ${config.words} words for student preparation. Make it a nice and well-formatted document.
 
 ${contextInstruction}
+${MATERIAL_RELIABILITY_INSTRUCTIONS}
 
 Requirements:
 - MUST include clear definitions.
@@ -216,6 +240,7 @@ Requirements:
 - ABSOLUTELY NO EMOJIS. Maintain strictly professional and academic tone.
 - ENSURE depth of explanation is consistent and not rushed.
 - Format the content using rich Markdown (e.g. ### for headers, * for lists, bolding for key terms). DO NOT use raw HTML tags.
+- The markdown content must contain fully written sections with no empty headings.
 
 Return JSON: {"title":"${subtopic}","overview":"2-3 sentence intro","content":"Well-formatted markdown explanation","keyPoints":["point 1","point 2","point 3"]}`;
 
@@ -223,28 +248,38 @@ Return JSON: {"title":"${subtopic}","overview":"2-3 sentence intro","content":"W
                 const codePrompt = mode === 'pro'
                     ? `Write ${config.codeExamples} code examples for "${subtopic}" with varying complexities. Make them clear and well-formatted for students.
 
+${MATERIAL_RELIABILITY_INSTRUCTIONS}
+
 Example 1: Basic introductory implementation
 Example 2: Practical real-world usage
 Example 3: Advanced/optimized version
 
 Return JSON:
 {"codeExamples":[
-  {"title":"Example name","code":"# clearly commented code\\n...","input":"Example input if applicable","output":"Exact output produced by the code","explanation":"Clear step-by-step logic explanation"}
+  {"title":"Example name","language":"python","code":"# clearly commented code\\n...","input":"Example input if applicable","output":"Exact output produced by the code","explanation":"Clear step-by-step logic explanation"}
 ]}
 
 Requirements:
 - Each example must be complete, runnable, and perfectly accurate.
-- Include an explicitly separated 'input' and 'output' string block in the JSON if relevant.
+- Set "language" to the correct markdown code-fence tag such as "python", "java", "cpp", "javascript", or another precise language identifier.
+- You MUST always provide both "input" and "output".
+- If there is no external input, set input to "No external input required."
+- If the code does not print to the console, set output to a truthful execution-result summary such as "No direct console output; the objects are created successfully and the final rendered result is shown in comments."
 - ABSOLUTELY NO EMOJIS. Professional academic tone only.
 - **CRITICAL**: To avoid JSON formatting errors, you MUST NOT use backslashes (\\) in your LaTeX or anywhere in the string values. Instead, use the placeholder "|||" for every single backslash (e.g. use "|||frac{1}{2}" instead of "\\frac{1}{2}").`
                     : `Write ${config.codeExamples} clear code examples for "${subtopic}".
 
+${MATERIAL_RELIABILITY_INSTRUCTIONS}
+
 Requirements:
 - The code MUST be clearly commented, explaining the logic.
-- Include a specific section for Input and Output. Output MUST be correct as per the code.
+- Set "language" to the correct markdown code-fence tag such as "python", "java", "cpp", or "javascript".
+- You MUST always provide both "input" and "output".
+- If there is no external input, set input to "No external input required."
+- If the code does not print to the console, set output to a truthful execution-result summary instead of leaving it blank.
 - NO EMOJIS. Professional tone.
 
-Return JSON: {"codeExamples":[{"title":"name","code":"# clearly commented code","input":"Example input provided to the code","output":"Exact output produced by the code","explanation":"Clear explanation of the code logic"}]}`;
+Return JSON: {"codeExamples":[{"title":"name","language":"python","code":"# clearly commented code","input":"Example input provided to the code","output":"Exact output produced by the code","explanation":"Clear explanation of the code logic"}]}`;
 
                 try {
                     // Define strict schema bounds to ensure AI doesn't return empty layout
@@ -268,12 +303,13 @@ Return JSON: {"codeExamples":[{"title":"name","code":"# clearly commented code",
                                     type: "OBJECT",
                                     properties: {
                                         title: { type: "STRING" },
+                                        language: { type: "STRING" },
                                         code: { type: "STRING" },
                                         input: { type: "STRING" },
                                         output: { type: "STRING" },
                                         explanation: { type: "STRING" }
                                     },
-                                    required: ["title", "code"]
+                                    required: ["title", "language", "code", "input", "output", "explanation"]
                                 }
                             }
                         },
@@ -282,8 +318,8 @@ Return JSON: {"codeExamples":[{"title":"name","code":"# clearly commented code",
 
                     // Build array of promises based on mode for a single subtopic
                     const apiCalls = [
-                        generateJSON(conceptPrompt, { maxTokens: config.conceptTokens, schema: conceptSchema }),
-                        generateJSON(codePrompt, { maxTokens: config.codeTokens, schema: codeSchema })
+                        generateJSON(conceptPrompt, { maxTokens: config.conceptTokens, schema: conceptSchema, attempts: 3, postValidate: validateConceptResult }),
+                        generateJSON(codePrompt, { maxTokens: config.codeTokens, schema: codeSchema, attempts: 3, postValidate: (result) => validateCodeResult(result, config.codeExamples) })
                     ];
 
                     // PRO MODE: Add third API call for advanced content
@@ -299,6 +335,7 @@ Cover these exact sections in supreme detail:
 
 Requirements:
 - ABSOLUTELY NO EMOJIS in any of the returned strings.
+${MATERIAL_RELIABILITY_INSTRUCTIONS}
 
 Return JSON:
 {"advanced":{
@@ -326,7 +363,7 @@ Return JSON:
                             },
                             required: ["advanced"]
                         };
-                        apiCalls.push(generateJSON(advancedPrompt, { maxTokens: config.advancedTokens, schema: advancedSchema }));
+                        apiCalls.push(generateJSON(advancedPrompt, { maxTokens: config.advancedTokens, schema: advancedSchema, attempts: 3, postValidate: validateAdvancedResult }));
                     }
 
                     // Execute all API calls for THIS SUBTOPIC in parallel
@@ -343,8 +380,9 @@ Return JSON:
                         fullContent += "\n\n## Code Examples\n\n";
                         codeResult.codeExamples.forEach((ex, i) => {
                             const title = ex.title || `Example ${i + 1}`;
+                            const language = ex.language || "text";
                             fullContent += `### ${title}\n\n`;
-                            fullContent += "```python\n" + (ex.code || "# Code here") + "\n```\n\n";
+                            fullContent += "```" + language + "\n" + (ex.code || "# Code here") + "\n```\n\n";
                             if (ex.input) {
                                 fullContent += `**Input:**\n\`\`\`\n${ex.input}\n\`\`\`\n\n`;
                             }
@@ -430,6 +468,7 @@ Return JSON:
 Explain everything clearly and specifically.
 
 ${contextInstruction}
+${MATERIAL_RELIABILITY_INSTRUCTIONS}
 
 Cover all aspects with clear practical examples.
 Crucial Mathematical or Technical Formulae MUST be included if relevant to the topic. Wrap block formulae in $$ ... $$ and inline formulae in $ ... $ for proper LaTeX rendering.
@@ -437,6 +476,7 @@ Crucial Mathematical or Technical Formulae MUST be included if relevant to the t
 Requirements:
 - ABSOLUTELY NO EMOJIS. Maintain a highly professional and authentic academic tone.
 - Format the content strictly using rich Markdown (## for headers, * for lists, bolding for emphasis). Do NOT use raw HTML.
+- The markdown content must contain complete explanatory sections and must not leave any subsection empty.
 - **CRITICAL**: To avoid JSON formatting errors, you MUST NOT use backslashes (\\) in your LaTeX or anywhere in the string values.
 - Instead, use the placeholder "|||" for every single backslash (e.g. use "|||frac{1}{2}" instead of "\\frac{1}{2}" or "\\\\frac{1}{2}", and "|||begin" instead of "\\begin").
 
@@ -444,6 +484,7 @@ Return JSON: {"title":"${subtopic}","overview":"3-4 sentence intro","content":"W
                     : `Provide a clear explanation of "${subtopic}" (topic: "${topic}") in around ${config.words} words for student preparation. Make it a nice and well-formatted document.
 
 ${contextInstruction}
+${MATERIAL_RELIABILITY_INSTRUCTIONS}
 
 Requirements:
 - MUST include clear definitions.
@@ -453,6 +494,7 @@ Requirements:
 - ABSOLUTELY NO EMOJIS. Maintain strictly professional and academic tone.
 - ENSURE depth of explanation is consistent and not arbitrarily shortened.
 - Format the content using rich Markdown (e.g. ### for headers, * for bullets, bolding for emphasis). DO NOT use raw HTML.
+- The markdown content must contain fully written sections with no empty headings.
 
 Return JSON: {"title":"${subtopic}","overview":"2-3 sentence intro","content":"Well-formatted markdown explanation","keyPoints":["p1","p2","p3"],"examples":["ex1","ex2"]}`;
 
@@ -469,7 +511,8 @@ Return JSON: {"title":"${subtopic}","overview":"2-3 sentence intro","content":"W
                         required: ["title", "overview", "content", "keyPoints", "examples"]
                     };
 
-                    const result = await generateJSON(prompt, { maxTokens: config.conceptTokens, schema: noCodeSchema });
+                    const minimumExamples = mode === "pro" ? 3 : 2;
+                    const result = await generateJSON(prompt, { maxTokens: config.conceptTokens, schema: noCodeSchema, attempts: 3, postValidate: (parsed) => validateNoCodeResult(parsed, minimumExamples) });
                     subtopicResults.push({
                         order: index,
                         subtopic,
@@ -519,9 +562,15 @@ Return JSON: {"title":"${subtopic}","overview":"2-3 sentence intro","content":"W
 
         console.log(`✅ Generated ${successCount}/${topicsToGenerate.length} sections (${codeTopicsCount} code-intensive) in ${mode.toUpperCase()} mode`);
 
+        if (successCount === 0) {
+            return res.status(502).json({
+                error: "Failed to generate reliable study material for the selected subtopic. Please try again.",
+            });
+        }
+
         res.json({
             material: {
-                topic,
+                topic: materialTopic,
                 mode,
                 subtopicsCount: topicsToGenerate.length,
                 successCount,

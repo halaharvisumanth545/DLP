@@ -1,6 +1,36 @@
-import { generateCompletion, generateJSON } from "../config/openai.js";
+import { generateJSON } from "../config/openai.js";
 import { retrieveRelevantChunks } from "./ragService.js";
 import { getBloomPromptInstructions } from "../utils/bloomTaxonomy.js";
+
+const DEFAULT_OPENAI_MODEL = process.env.OPENAI_CHAT_MODEL || "gpt-4o-mini";
+
+function ensureMeaningfulString(value, label, minLength) {
+  if (typeof value !== "string" || value.trim().length < minLength) {
+    throw new Error(`${label} must contain at least ${minLength} meaningful characters.`);
+  }
+}
+
+function ensureStringArray(value, label, minItems) {
+  if (!Array.isArray(value) || value.length < minItems) {
+    throw new Error(`${label} must contain at least ${minItems} item(s).`);
+  }
+
+  value.forEach((item, index) => {
+    ensureMeaningfulString(item, `${label}[${index}]`, 3);
+  });
+}
+
+function ensureObjectArray(value, label, minItems) {
+  if (!Array.isArray(value) || value.length < minItems) {
+    throw new Error(`${label} must contain at least ${minItems} item(s).`);
+  }
+
+  value.forEach((item, index) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      throw new Error(`${label}[${index}] must be an object.`);
+    }
+  });
+}
 
 // Generate study material content
 export async function generateStudyContent(topic, mode, syllabusContext = "", filter = {}) {
@@ -8,25 +38,19 @@ export async function generateStudyContent(topic, mode, syllabusContext = "", fi
     short: {
       words: "500-800",
       maxTokens: 3000,
-      model: "qwen/qwen3-next-80b-a3b-instruct:free", // OpenRouter free tier
-      // groqModel: "llama-3.1-8b-instant",
-      // geminiModel: "gemini-2.5-flash",
+      model: DEFAULT_OPENAI_MODEL,
       instruction: "definitions of main concepts, 1-2 practical examples per concept, and sample code/formulae for relevant subtopics.",
     },
     intermediate: {
       words: "800-1200",
       maxTokens: 3000,
-      model: "qwen/qwen3-next-80b-a3b-instruct:free", // OpenRouter free tier
-      // groqModel: "llama-3.3-70b-versatile",
-      // geminiModel: "gemini-2.5-flash",
+      model: DEFAULT_OPENAI_MODEL,
       instruction: "detailed explanations with examples",
     },
     pro: {
       words: "1000-1500",
       maxTokens: 8192,
-      model: "qwen/qwen3-next-80b-a3b-instruct:free", // OpenRouter free tier
-      // groqModel: "llama-3.3-70b-versatile",
-      // geminiModel: "gemini-2.0-pro-exp-02-05",
+      model: DEFAULT_OPENAI_MODEL,
       instruction: "comprehensive and detailed coverage",
     },
   };
@@ -35,7 +59,7 @@ export async function generateStudyContent(topic, mode, syllabusContext = "", fi
 
   // New: Get textbook context from RAG (Pinecone) to anchor the AI and prevent hallucinations
   console.log(`[Study Content] Retrieving RAG context for topic: ${topic}`);
-  const chunks = await retrieveRelevantChunks(topic, filter, 8);
+  const chunks = await retrieveRelevantChunks(topic, filter, 8, { failSilently: true });
   const scrapedContext = chunks.map((c, i) => `--- Textbook Excerpt ${i + 1} (from "${c.fileName}", ~p.${c.pageEstimate}, relevance: ${(c.score * 100).toFixed(1)}%) ---\n${c.text}`).join("\n\n");
 
   const proModeEnhancement = mode === "pro" ? `
@@ -82,6 +106,9 @@ Requirements:
 - Length: approx ${config.words} words
 - Style: ${config.instruction}
 - Use HTML tags for formatting: <p> for paragraphs, <ul>/<li> for lists, <strong> for emphasis.
+- Every requested section must be fully written with meaningful matter. Do not leave any heading, subsection, or field empty.
+- Never use placeholders such as "content here", "example", "...", or generic filler text.
+- Each section must contain enough detail to render properly in the application without appearing thin or unfinished.
 - **IMPORTANT**: If the textbook context contains images formatted as \`[IMAGE URL: ... | DESCRIPTION: ...]\`, you MUST include these relevant images directly in your HTML content using Markdown image syntax: \`![DESCRIPTION](IMAGE URL)\`. Place them neatly under the most appropriate heading/topic to improve readability and conceptual understanding.
 - **IMPORTANT**: For mathematical formulas, equations, or scientific notation, YOU MUST USE LaTeX.
   - Use $...$ for inline math (e.g., $E=mc^2$).
@@ -89,11 +116,13 @@ Requirements:
   - **CRITICAL**: To avoid JSON formatting errors, you MUST NOT use backslashes (\\) in your LaTeX or anywhere in the string values.
   - Instead, use the placeholder "|||" for every single backslash.
   - Example: Use "|||frac{1}{2}" instead of "\\frac{1}{2}" or "\\\\frac{1}{2}".
-  - Example: Use "|||alpha" instead of "\\alpha".
-  - Our system will automatically convert "|||" back to the correct backslash.
+- Example: Use "|||alpha" instead of "\\alpha".
+- Our system will automatically convert "|||" back to the correct backslash.
 - **GUIDELINE**: For theoretical or non-technical subjects, avoid code snippets. However, if the topic is technical (e.g., programming), you MUST include relevant code examples.
+- If code examples are included, they must be consistent with the explanation and must not contradict the stated input/output or surrounding text.
 - **TONE & FORMATTING**: The generated content MUST be highly professional and authentic. Do NOT use any emojis, emoticons, or overly casual language anywhere in the response. Maintain an academic and serious tone throughout.
 - Ensure proper spacing and alignment. Structure the HTML using hierarchical headers (<h3>, <h4>) where appropriate to make it visually appealing and contextually integrate the images inside the sections.
+- Before finalizing, self-check that all required JSON fields are present and filled with meaningful, non-empty content.
 
 Return as a JSON object strictly matching the schema provided. Do not deviate. Ensure that JSON is valid and completed.`;
 
@@ -132,10 +161,20 @@ Return as a JSON object strictly matching the schema provided. Do not deviate. E
     const result = await generateJSON(prompt, {
       maxTokens: config.maxTokens,
       model: config.model,
-      // groqModel: config.groqModel,
-      // geminiModel: config.geminiModel,
       fallbackContext: scrapedContext,
-      schema: schema
+      schema: schema,
+      attempts: 2,
+      postValidate: (parsed) => {
+        ensureMeaningfulString(parsed.content, "content", 150);
+        ensureObjectArray(parsed.sections, "sections", 1);
+        parsed.sections.forEach((section, index) => {
+          ensureMeaningfulString(section.title, `sections[${index}].title`, 3);
+          ensureMeaningfulString(section.content, `sections[${index}].content`, 80);
+          if (mode !== "short") {
+            ensureStringArray(section.keyPoints, `sections[${index}].keyPoints`, 2);
+          }
+        });
+      }
     });
     return {
       content: result.content || "",
@@ -165,7 +204,7 @@ export async function generateQuestionsForTopic(topic, options = {}) {
 
   // Retrieve textbook chunks from RAG instead of web scraping
   console.log(`[Question Generation] Retrieving RAG context for topic: ${topic}${bloomLevel ? ` | Bloom: ${bloomLevel}` : ''}`);
-  const chunks = await retrieveRelevantChunks(topic, options.filter || {}, 5);
+  const chunks = await retrieveRelevantChunks(topic, options.filter || {}, 5, { failSilently: true });
   const scrapedContext = chunks.map((c, i) => `--- Textbook Excerpt ${i + 1} (from "${c.fileName}", ~p.${c.pageEstimate}, relevance: ${(c.score * 100).toFixed(1)}%) ---\n${c.text}`).join("\n\n");
 
   // Build Bloom's Taxonomy prompt section if a level is specified
