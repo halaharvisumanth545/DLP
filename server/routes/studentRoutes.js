@@ -17,6 +17,7 @@ import {
     saveStudyMaterial,
     getAllStudyMaterials,
     deleteStudyMaterial,
+    combineMaterials,
 } from "../controllers/contentController.js";
 import {
     startSession,
@@ -24,6 +25,7 @@ import {
     completeSession,
     getSession,
     getSessionResult,
+    getSessionQuestions,
 } from "../controllers/sessionController.js";
 import {
     getAnalytics,
@@ -52,6 +54,7 @@ router.delete("/syllabi/:id", deleteSyllabus);
 // Study material routes
 router.post("/study-materials/generate", generateStudyMaterial);
 router.post("/study-materials/save", saveStudyMaterial);
+router.post("/study-materials/combine", combineMaterials);
 router.get("/study-materials", getAllStudyMaterials);
 router.get("/study-materials/syllabus/:syllabusId", getStudyMaterials);
 router.get("/study-materials/:id", getStudyMaterialById);
@@ -64,6 +67,7 @@ router.get("/sessions/:sessionId", getSession);
 router.post("/sessions/:sessionId/answer", submitAnswer);
 router.post("/sessions/:sessionId/complete", completeSession);
 router.get("/sessions/:sessionId/result", getSessionResult);
+router.get("/sessions/:sessionId/questions", getSessionQuestions);
 
 // Analytics routes
 router.get("/analytics", getAnalytics);

@@ -62,6 +62,16 @@ const resultSchema = new mongoose.Schema(
             incorrect: Number,
             skipped: Number,
         },
+        questionSwaps: [
+            {
+                questionId: {
+                    type: mongoose.Schema.Types.ObjectId,
+                    ref: "Question",
+                },
+                timeSpent: Number,
+                timestamp: Date,
+            }
+        ],
     },
     { timestamps: true }
 );

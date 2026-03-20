@@ -24,9 +24,11 @@ const CustomDropdown = ({
     labelKey = "label",
     valueKey = "value",
     disabled = false,
+    searchable = false,
     className = ""
 }) => {
     const [isOpen, setIsOpen] = useState(false);
+    const [searchTerm, setSearchTerm] = useState('');
     const dropdownRef = useRef(null);
 
     // Handle click outside to close
@@ -42,6 +44,11 @@ const CustomDropdown = ({
             document.removeEventListener('mousedown', handleClickOutside);
         };
     }, []);
+
+    // Reset search term when dropdown opens/closes
+    useEffect(() => {
+        if (!isOpen) setSearchTerm('');
+    }, [isOpen]);
 
     const handleSelect = (option) => {
         if (typeof option === 'object') {
@@ -68,24 +75,50 @@ const CustomDropdown = ({
         return option;
     };
 
+    // Filter options based on search term
+    const filteredOptions = options.filter(option => {
+        if (!searchable || !searchTerm) return true;
+        const label = getDisplayLabel(option);
+        return label?.toString().toLowerCase().includes(searchTerm.toLowerCase());
+    });
+
     return (
         <div
             className={`custom-dropdown ${className} ${isOpen ? 'open' : ''} ${disabled ? 'disabled' : ''}`}
             ref={dropdownRef}
         >
-            <div className="dropdown-trigger" onClick={() => !disabled && setIsOpen(!isOpen)}>
-                <span className={`selected-value ${!selectedOption ? 'placeholder' : ''}`}>
-                    {selectedOption ? getDisplayLabel(selectedOption) : placeholder}
-                </span>
-                <span className="dropdown-arrow">▼</span>
+            <div className="custom-tooltip-wrapper">
+                <div
+                    className="dropdown-trigger"
+                    onClick={() => !disabled && setIsOpen(!isOpen)}
+                >
+                    <span className={`selected-value ${!selectedOption ? 'placeholder' : ''}`}>
+                        {selectedOption ? getDisplayLabel(selectedOption) : placeholder}
+                    </span>
+                    <span className="dropdown-arrow">▼</span>
+                </div>
+                {selectedOption && getDisplayLabel(selectedOption).length > 25 && !isOpen && (
+                    <span className="custom-tooltip-text">{getDisplayLabel(selectedOption)}</span>
+                )}
             </div>
 
             {isOpen && (
                 <div className="dropdown-menu">
-                    {options.length === 0 ? (
+                    {searchable && (
+                        <div className="dropdown-search">
+                            <input
+                                type="text"
+                                placeholder="Search..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                onClick={(e) => e.stopPropagation()}
+                            />
+                        </div>
+                    )}
+                    {filteredOptions.length === 0 ? (
                         <div className="dropdown-item no-options">No options available</div>
                     ) : (
-                        options.map((option, index) => {
+                        filteredOptions.map((option, index) => {
                             const isSelected = selectedOption === option || (typeof option === 'object' && option[valueKey] === value);
                             const label = typeof option === 'object' ? option[labelKey] : option;
                             const key = typeof option === 'object' ? option[valueKey] : index; // Fallback to index if string

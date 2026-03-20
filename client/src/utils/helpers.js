@@ -93,8 +93,6 @@ export function getSessionTypeLabel(type) {
             return "Quiz";
         case "test":
             return "Test";
-        case "self-assessment":
-            return "Self Assessment";
         default:
             return capitalize(type);
     }

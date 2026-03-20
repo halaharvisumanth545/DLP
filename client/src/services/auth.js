@@ -195,6 +195,33 @@ export function isTeacher() {
     return getUserRole() === "teacher";
 }
 
+// Request password reset
+export async function forgotPassword(email) {
+    if (MOCK_MODE) {
+        return { message: "Mock Mode: Password reset link would be sent to " + email };
+    }
+    const response = await api.post(endpoints.forgotPassword, { email });
+    return response.data;
+}
+
+// Reset password with token
+export async function resetPassword(token, newPassword) {
+    if (MOCK_MODE) {
+        return { message: "Mock Mode: Password updated successfully" };
+    }
+    const response = await api.post(endpoints.resetPassword, { token, newPassword });
+    return response.data;
+}
+
+// Edit active user password
+export async function editPassword(currentPassword, newPassword) {
+    if (MOCK_MODE) {
+        return { message: "Mock Mode: Password updated successfully" };
+    }
+    const response = await api.post(endpoints.editPassword, { currentPassword, newPassword });
+    return response.data;
+}
+
 // Initialize mock users on load
 initMockUsers();
 

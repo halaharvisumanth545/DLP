@@ -68,7 +68,12 @@ const analyticsSchema = new mongoose.Schema(
                 avgScore: Number,
             },
         ],
-        streaks: {
+        streaks: { // Practice Streak
+            current: { type: Number, default: 0 },
+            longest: { type: Number, default: 0 },
+            lastActiveDate: Date,
+        },
+        loginStreaks: { // Visiting Streak
             current: { type: Number, default: 0 },
             longest: { type: Number, default: 0 },
             lastActiveDate: Date,
@@ -76,8 +81,6 @@ const analyticsSchema = new mongoose.Schema(
     },
     { timestamps: true }
 );
-
-// Index
-analyticsSchema.index({ userId: 1 });
+// userId already has unique: true which creates an index automatically
 
 export const Analytics = mongoose.model("Analytics", analyticsSchema, "analytics");

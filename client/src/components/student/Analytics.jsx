@@ -5,6 +5,14 @@ import { fetchAnalytics, fetchWeakTopics } from "../../store/studentSlice";
 import { getProgressHistory, getTopicPerformance } from "../../services/openai";
 import { formatPercentage, formatTime, getDifficultyColor } from "../../utils/helpers";
 import { ROUTES } from "../../utils/constants"; // Ensure import
+import {
+    ChartIcon,
+    ClockIcon,
+    FireIcon,
+    TrophyIcon,
+    HelpCircleIcon,
+    LayersIcon
+} from "../common/Icons";
 import "./StudentComponents.css";
 
 export default function Analytics() {
@@ -73,8 +81,7 @@ export default function Analytics() {
     return (
         <div className="analytics-page">
             <div className="page-header">
-                <h1>📈 Analytics Dashboard</h1>
-                <p>Track your learning progress and identify areas for improvement</p>
+                <h1>Analytics Dashboard</h1>
             </div>
 
             <div className="analytics-tabs">
@@ -93,15 +100,15 @@ export default function Analytics() {
                 {activeTab === "overview" && (
                     <div className="analytics-overview">
                         <div className="stats-grid">
-                            <Link to={ROUTES.STUDENT.SESSIONS} className="stat-card large clickable">
-                                <span className="stat-icon">📊</span>
+                            <Link to={ROUTES.STUDENT.SESSIONS} state={{ from: 'analytics' }} className="stat-card large clickable">
+                                <span className="stat-icon"><LayersIcon /></span>
                                 <div className="stat-content">
                                     <span className="stat-value">{analytics?.totalSessions || 0}</span>
                                     <span className="stat-label">Total Sessions</span>
                                 </div>
                             </Link>
                             <div className="stat-card large">
-                                <span className="stat-icon">❓</span>
+                                <span className="stat-icon"><HelpCircleIcon /></span>
                                 <div className="stat-content">
                                     <span className="stat-value">{analytics?.totalQuestionsAttempted || 0}</span>
                                     <span className="stat-label">Questions Attempted</span>
@@ -123,7 +130,7 @@ export default function Analytics() {
                                 </div>
                             </div>
                             <div className="stat-card large">
-                                <span className="stat-icon">⏱️</span>
+                                <span className="stat-icon"><ClockIcon /></span>
                                 <div className="stat-content">
                                     <span className="stat-value">{analytics?.avgTimePerQuestion || 0}s</span>
                                     <span className="stat-label">Avg Time/Question</span>
@@ -133,14 +140,14 @@ export default function Analytics() {
 
                         <div className="streaks-section">
                             <div className="stat-card streak current">
-                                <span className="stat-icon">🔥</span>
+                                <span className="stat-icon"><FireIcon /></span>
                                 <div className="stat-content">
                                     <span className="stat-value">{analytics?.streaks?.current || 0}</span>
-                                    <span className="stat-label">Current Day Streak</span>
+                                    <span className="stat-label">Current Streak</span>
                                 </div>
                             </div>
                             <div className="stat-card streak longest">
-                                <span className="stat-icon">🏆</span>
+                                <span className="stat-icon"><TrophyIcon /></span>
                                 <div className="stat-content">
                                     <span className="stat-value">{analytics?.streaks?.longest || 0}</span>
                                     <span className="stat-label">Longest Streak</span>
@@ -150,7 +157,7 @@ export default function Analytics() {
 
                         {weakTopics.length > 0 && (
                             <div className="weak-topics-section">
-                                <h2>⚠️ Areas Needing Attention</h2>
+                                <h2>Areas Needing Attention</h2>
                                 <div className="weak-topics-list">
                                     {weakTopics.slice(0, 5).map((topic, index) => (
                                         <div key={index} className="weak-topic-item">
@@ -168,7 +175,7 @@ export default function Analytics() {
 
                 {activeTab === "topics" && (
                     <div className="analytics-topics">
-                        <h3>📚 Topic Performance</h3>
+                        <h3>Topic Performance</h3>
                         <div className="topics-grid">
                             {topicPerformance.map((topic, index) => (
                                 <div key={index} className="topic-performance-card">
@@ -211,7 +218,7 @@ export default function Analytics() {
 
                 {activeTab === "progress" && (
                     <div className="analytics-progress">
-                        <h3>📅 Learning Trajectory (Last 30 Days)</h3>
+                        <h3>Learning Trajectory (Last 30 Days)</h3>
                         <div className="progress-chart-container">
                             {progressHistory.length > 0 ? (
                                 <>
@@ -263,7 +270,7 @@ export default function Analytics() {
 
                 {activeTab === "difficulty" && (
                     <div className="analytics-difficulty">
-                        <h3>🎚️ Performance by Difficulty</h3>
+                        <h3>Performance by Difficulty</h3>
                         <div className="difficulty-grid">
                             {["easy", "medium", "hard"].map((diff) => {
                                 const data = diffPerf[diff] || { attempted: 0, correct: 0, accuracy: 0 };

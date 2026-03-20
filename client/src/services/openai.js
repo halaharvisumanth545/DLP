@@ -104,7 +104,7 @@ export async function getSyllabusById(id) {
     return response.data;
 }
 
-export async function uploadSyllabus(fileName, content, fileData = null) {
+export async function uploadSyllabus(fileName, content) {
     if (MOCK_MODE) {
         const newSyllabus = {
             _id: `syllabus-${Date.now()}`,
@@ -122,12 +122,7 @@ export async function uploadSyllabus(fileName, content, fileData = null) {
         return { syllabus: newSyllabus, message: "Syllabus uploaded (Mock Mode)" };
     }
 
-    // If fileData is provided (PDF), send it; otherwise send text content
-    const payload = fileData
-        ? { fileName, pdfBase64: fileData.base64 }
-        : { fileName, content };
-
-    const response = await api.post(endpoints.student.uploadSyllabus, payload);
+    const response = await api.post(endpoints.student.uploadSyllabus, { fileName, content });
     return response.data;
 }
 
@@ -169,7 +164,7 @@ export async function generateMaterial(syllabusId, topic, mode = "intermediate")
 }
 
 // Generate comprehensive material with parallel API calls per subtopic
-export async function generateComprehensiveMaterial(topic, subtopics = [], mode = "intermediate") {
+export async function generateComprehensiveMaterial(syllabusId, topic, subtopics = [], mode = "intermediate") {
     if (MOCK_MODE) {
         // Simulate delay for each subtopic
         await new Promise(resolve => setTimeout(resolve, 500 * subtopics.length));
@@ -200,7 +195,7 @@ export async function generateComprehensiveMaterial(topic, subtopics = [], mode 
             },
         };
     }
-    const response = await api.post(endpoints.openai.generateComprehensiveMaterial, { topic, subtopics, mode });
+    const response = await api.post(endpoints.openai.generateComprehensiveMaterial, { syllabusId, topic, subtopics, mode });
     return response.data;
 }
 
@@ -223,6 +218,7 @@ export async function startSession(config) {
                 questionId: `q-${topicIndex}-1`,
                 text: `What is the main concept of ${topic}?`,
                 topic,
+                type: "mcq",
                 difficulty: "easy",
                 marks: 2,
                 options: [
@@ -237,6 +233,7 @@ export async function startSession(config) {
                 questionId: `q-${topicIndex}-2`,
                 text: `Which of the following best describes ${topic}?`,
                 topic,
+                type: "mcq",
                 difficulty: "medium",
                 marks: 3,
                 options: [
@@ -246,6 +243,16 @@ export async function startSession(config) {
                     { label: "D", text: "Option D" },
                 ],
                 correctAnswer: "A",
+            },
+            {
+                questionId: `q-${topicIndex}-3`,
+                text: `Explain the key principles and applications of ${topic} in detail.`,
+                topic,
+                type: "descriptive",
+                difficulty: "medium",
+                marks: 5,
+                options: [],
+                correctAnswer: `The key principles of ${topic} include fundamental concepts, practical applications, and theoretical frameworks that form the basis of understanding in this area.`,
             },
         ]);
 
@@ -278,11 +285,11 @@ export async function submitAnswer(sessionId, answerData) {
     return response.data;
 }
 
-export async function completeSession(sessionId) {
+export async function completeSession(sessionId, data = {}) {
     if (MOCK_MODE) {
         return { message: "Session completed (Mock Mode)" };
     }
-    const response = await api.post(`${endpoints.student.sessions}/${sessionId}/complete`);
+    const response = await api.post(`${endpoints.student.sessions}/${sessionId}/complete`, data);
     return response.data;
 }
 
@@ -310,6 +317,74 @@ export async function getSessionResult(sessionId) {
         };
     }
     const response = await api.get(`${endpoints.student.sessions}/${sessionId}/result`);
+    return response.data;
+}
+
+export async function getSessionQuestions(sessionId) {
+    if (MOCK_MODE) {
+        return {
+            questions: [
+                {
+                    questionId: "q1",
+                    text: "What is the time complexity of binary search?",
+                    options: [
+                        { label: "A", text: "O(n)" },
+                        { label: "B", text: "O(log n)" },
+                        { label: "C", text: "O(n²)" },
+                        { label: "D", text: "O(1)" },
+                    ],
+                    difficulty: "easy",
+                    topic: "Arrays",
+                    marks: 1,
+                    correctAnswer: "B",
+                    explanation: "Binary search divides the search space in half at each step, giving O(log n) time complexity.",
+                    userAnswer: "B",
+                    isCorrect: true,
+                    isSkipped: false,
+                    timeSpent: 25,
+                },
+                {
+                    questionId: "q2",
+                    text: "Which data structure uses LIFO ordering?",
+                    options: [
+                        { label: "A", text: "Queue" },
+                        { label: "B", text: "Stack" },
+                        { label: "C", text: "Array" },
+                        { label: "D", text: "Linked List" },
+                    ],
+                    difficulty: "easy",
+                    topic: "Linear Data Structures",
+                    marks: 1,
+                    correctAnswer: "B",
+                    explanation: "A Stack follows Last-In-First-Out (LIFO) ordering.",
+                    userAnswer: "A",
+                    isCorrect: false,
+                    isSkipped: false,
+                    timeSpent: 18,
+                },
+                {
+                    questionId: "q3",
+                    text: "What is the worst-case time complexity of quicksort?",
+                    options: [
+                        { label: "A", text: "O(n log n)" },
+                        { label: "B", text: "O(n)" },
+                        { label: "C", text: "O(n²)" },
+                        { label: "D", text: "O(log n)" },
+                    ],
+                    difficulty: "medium",
+                    topic: "Sorting",
+                    marks: 2,
+                    correctAnswer: "C",
+                    explanation: "Quicksort has O(n²) worst-case time complexity when the pivot selection is poor.",
+                    userAnswer: null,
+                    isCorrect: false,
+                    isSkipped: true,
+                    timeSpent: 0,
+                },
+            ],
+        };
+    }
+    const response = await api.get(`${endpoints.student.sessions}/${sessionId}/questions`);
     return response.data;
 }
 

@@ -22,7 +22,7 @@ const studyMaterialSchema = new mongoose.Schema(
         },
         mode: {
             type: String,
-            enum: ["short", "intermediate", "pro"],
+            enum: ["short", "intermediate", "pro", "combined"],
             required: true,
         },
         content: {

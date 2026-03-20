@@ -4,27 +4,47 @@
 }
 
 .page-header {
+    margin-bottom: 20px;
+}
+
+.page-header-row {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 32px;
 }
 
 .page-header h1 {
     margin: 0;
 }
 
+.back-chevron {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+    text-decoration: none;
+    padding: 4px;
+    border-radius: 6px;
+    transition: all 0.2s;
+    margin-top: 5px;
+}
+
+.back-chevron:hover {
+    color: var(--color-primary);
+    background: rgba(99, 102, 241, 0.08);
+}
+
 .syllabi-list {
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 8px;
 }
 
 .syllabus-manager .syllabus-card {
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 16px;
-    padding: 20px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 8px 12px;
     text-align: left;
     cursor: default;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -33,14 +53,14 @@
 }
 
 .syllabus-manager .syllabus-card:hover {
-    background: rgba(255, 255, 255, 0.06);
+    background: var(--item-hover);
     border-color: rgba(99, 102, 241, 0.5);
     transform: translateY(-2px);
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
 }
 
 .syllabus-manager .syllabus-card.expanded {
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--item-hover);
     border-color: #6366f1;
     box-shadow: 0 12px 32px rgba(99, 102, 241, 0.15);
 }
@@ -50,7 +70,7 @@
     justify-content: space-between;
     align-items: center;
     cursor: pointer;
-    padding: 4px;
+    padding: 2px;
     user-select: none;
 }
 
@@ -58,7 +78,7 @@
     display: grid;
     grid-template-columns: 1fr 120px 120px;
     align-items: center;
-    gap: 24px;
+    gap: 16px;
     flex: 1;
 }
 
@@ -69,8 +89,8 @@
 
 .syllabus-info h3 {
     margin: 0;
-    color: #fff;
-    font-size: 1.2rem;
+    color: var(--text-heading);
+    font-size: 0.95rem;
     font-weight: 600;
 }
 
@@ -85,33 +105,51 @@
 
 .status-badge.parsed {
     background: rgba(16, 185, 129, 0.2);
-    color: #10b981;
+    color: var(--color-success);
 }
 
 .status-badge.pending {
     background: rgba(245, 158, 11, 0.2);
-    color: #f59e0b;
+    color: var(--color-warning);
 }
 
 .status-badge.failed {
     background: rgba(239, 68, 68, 0.2);
-    color: #ef4444;
+    color: var(--color-error);
 }
 
 .date-badge {
-    color: #9ca3af;
+    color: var(--text-muted);
     font-size: 0.85rem;
 }
 
-.expand-icon {
-    color: #9ca3af;
-    font-size: 0.8rem;
+.syllabus-delete-btn {
+    background: none;
+    border: none;
+    color: #ef4444;
+    cursor: pointer;
+    padding: 6px;
+    border-radius: 8px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.syllabus-delete-btn svg {
+    width: 16px;
+    height: 16px;
+}
+
+.syllabus-delete-btn:hover {
+    background: rgba(239, 68, 68, 0.12);
 }
 
 .syllabus-details {
-    margin-top: 24px;
-    padding-top: 24px;
-    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    margin-top: 12px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border-color);
     animation: slideUp 0.3s ease-out;
 }
 
@@ -119,59 +157,58 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 24px;
+    margin-bottom: 16px;
 }
 
 .editor-header h4 {
-    color: #a5b4fc;
+    color: var(--color-secondary);
     margin: 0;
-    font-size: 1.1rem;
+    font-size: 0.95rem;
     font-weight: 600;
 }
 
 .topic-item {
-    background: rgba(0, 0, 0, 0.25);
-    border: 1px solid rgba(255, 255, 255, 0.05);
-    border-radius: 12px;
-    padding: 20px;
-    margin-bottom: 16px;
+    background: var(--input-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 10px;
+    margin-bottom: 8px;
     transition: all 0.2s;
 }
 
 .topic-item:hover {
-    border-color: rgba(255, 255, 255, 0.1);
+    border-color: var(--border-color-hover);
 }
 
 .topic-row {
     display: flex;
-    gap: 12px;
-    margin-bottom: 16px;
+    gap: 8px;
+    margin-bottom: 8px;
     align-items: center;
 }
 
 .topic-name-input {
     flex: 1;
     font-weight: 600;
-    font-size: 1.05rem;
-    color: #fff;
-    background: rgba(255, 255, 255, 0.08);
-    /* Slightly lighter background */
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    padding: 10px 14px;
+    font-size: 0.9rem;
+    color: var(--text-heading);
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    padding: 8px 10px;
     border-radius: 8px;
     transition: all 0.2s;
 }
 
 .topic-name-input:focus {
-    background: rgba(255, 255, 255, 0.12);
+    background: var(--item-hover);
     border-color: #6366f1;
     outline: none;
 }
 
 .subtopics-list {
     padding-left: 12px;
-    margin-left: 12px;
-    border-left: 2px solid rgba(255, 255, 255, 0.1);
+    margin-left: 8px;
+    border-left: 2px solid var(--border-color);
     display: flex;
     flex-direction: column;
     gap: 10px;
@@ -180,7 +217,7 @@
 .subtopic-row {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 8px;
 }
 
 .subtopic-row span {
@@ -191,17 +228,17 @@
 
 .subtopic-input {
     flex: 1;
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    padding: 8px 12px;
+    background: var(--input-bg);
+    border: 1px solid var(--border-color);
+    padding: 6px 8px;
     border-radius: 8px;
-    color: #d1d5db;
+    color: var(--text-main);
     font-size: 0.95rem;
     transition: all 0.2s;
 }
 
 .subtopic-input:focus {
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--item-hover);
     border-color: #8b5cf6;
     outline: none;
 }
@@ -210,7 +247,7 @@
 .btn-remove-sub {
     background: none;
     border: none;
-    color: #ef4444;
+    color: var(--color-error);
     cursor: pointer;
     font-size: 1.2rem;
     padding: 0 8px;
@@ -227,33 +264,74 @@
 .btn-add-sub {
     background: none;
     border: 1px dashed rgba(99, 102, 241, 0.5);
-    color: #a5b4fc;
-    padding: 6px 12px;
+    color: var(--color-secondary);
+    padding: 6px 10px;
     border-radius: 6px;
     cursor: pointer;
     font-size: 0.85rem;
     transition: all 0.2s;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.btn-add-topic svg,
+.btn-add-sub svg {
+    width: 14px;
+    height: 14px;
+}
+
+.btn-add-sub {
+    width: 100%;
+    justify-content: center;
 }
 
 .btn-add-topic:hover,
 .btn-add-sub:hover {
     background: rgba(99, 102, 241, 0.1);
     border-color: #6366f1;
-    color: #fff;
+    color: var(--text-heading);
 }
 
 .action-buttons {
-    margin-top: 24px;
+    margin-top: 16px;
     display: flex;
-    justify-content: flex-end;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.btn-delete-syllabus {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: none;
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    color: #ef4444;
+    padding: 5px 10px;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-delete-syllabus svg {
+    width: 14px;
+    height: 14px;
+}
+
+.btn-delete-syllabus:hover {
+    background: rgba(239, 68, 68, 0.1);
+    border-color: #ef4444;
 }
 
 .btn-save {
-    background: #10b981;
+    background: var(--color-success);
     color: white;
     border: none;
-    padding: 10px 24px;
-    border-radius: 8px;
+    padding: 6px 14px;
+    border-radius: 6px;
+    font-size: 0.8rem;
     font-weight: 600;
     cursor: pointer;
     transition: all 0.2s;
@@ -267,4 +345,12 @@
 .btn-save:disabled {
     opacity: 0.6;
     cursor: not-allowed;
+}
+
+.dot-icon {
+    width: 6px;
+    height: 6px;
+    background-color: #6366f1;
+    border-radius: 50%;
+    display: inline-block;
 }

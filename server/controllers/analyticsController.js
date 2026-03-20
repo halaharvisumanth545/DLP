@@ -42,7 +42,7 @@ export async function getWeakTopics(req, res) {
 
         const analytics = await Analytics.findOne({ userId });
 
-        const weakTopics = analytics?.weakTopics || [];
+        const weakTopics = analytics?.weakTopics?.filter(t => t.accuracy < 50) || [];
 
         // Sort by improvement needed
         const sortedWeakTopics = weakTopics

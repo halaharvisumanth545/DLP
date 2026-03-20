@@ -2,6 +2,8 @@ import { User } from "../models/User.js";
 import { Syllabus } from "../models/Syllabus.js";
 import { Session } from "../models/Session.js";
 import { Analytics } from "../models/Analytics.js";
+import { StudyMaterial } from "../models/StudyMaterial.js";
+import { updateLoginStreaks } from "../services/analyticsService.js";
 
 // Get student dashboard data
 export async function getDashboard(req, res) {
@@ -34,7 +36,14 @@ export async function getDashboard(req, res) {
             .select("type status score completedAt createdAt");
 
         // Get analytics summary
-        const analytics = await Analytics.findOne({ userId });
+        let analytics = await Analytics.findOne({ userId });
+
+        if (analytics) {
+            const streakUpdated = await updateLoginStreaks(analytics);
+            if (streakUpdated) {
+                await analytics.save();
+            }
+        }
 
         res.json({
             user: {
@@ -46,11 +55,13 @@ export async function getDashboard(req, res) {
                 totalSyllabi: await Syllabus.countDocuments({ userId }),
                 totalSessions: analytics?.totalSessions || 0,
                 overallAccuracy: analytics?.overallAccuracy || 0,
-                currentStreak: analytics?.streaks?.current || 0,
+                practiceStreak: analytics?.streaks?.current || 0,
+                visitingStreak: analytics?.loginStreaks?.current || 0,
+                totalMaterialsGenerated: await StudyMaterial.countDocuments({ userId }),
             },
             recentSyllabi,
             recentSessions,
-            weakTopics: analytics?.weakTopics?.slice(0, 5) || [],
+            weakTopics: analytics?.weakTopics?.filter(t => t.accuracy < 50).slice(0, 5) || [],
         });
     } catch (error) {
         console.error("Dashboard error:", error);
@@ -95,7 +106,7 @@ export async function getSyllabusById(req, res) {
 export async function updateSyllabus(req, res) {
     try {
         const { id } = req.params;
-        const { topics } = req.body;
+        const { topics, fileName } = req.body;
 
         const syllabus = await Syllabus.findOne({
             _id: id,
@@ -107,6 +118,9 @@ export async function updateSyllabus(req, res) {
         }
 
         syllabus.topics = topics;
+        if (fileName !== undefined) {
+            syllabus.fileName = fileName;
+        }
         await syllabus.save();
 
         res.json({ syllabus });
@@ -124,17 +138,24 @@ export async function getSessionHistory(req, res) {
         const query = { userId: req.user.userId };
         if (type) query.type = type;
 
-        const sessions = await Session.find(query)
+        let sessionsQuery = Session.find(query)
             .sort({ createdAt: -1 })
-            .skip((page - 1) * limit)
-            .limit(parseInt(limit))
-            .select("type status score topics difficulty completedAt createdAt");
+            .select("type status score topics difficulty completedAt createdAt")
+            .populate("syllabusId", "fileName");
+
+        if (limit !== 'all') {
+            sessionsQuery = sessionsQuery
+                .skip((page - 1) * limit)
+                .limit(parseInt(limit));
+        }
+
+        const sessions = await sessionsQuery;
 
         const total = await Session.countDocuments(query);
 
         res.json({
             sessions,
-            pagination: {
+            pagination: limit === 'all' ? { total } : {
                 page: parseInt(page),
                 limit: parseInt(limit),
                 total,

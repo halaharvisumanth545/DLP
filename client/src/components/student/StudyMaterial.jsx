@@ -7,6 +7,17 @@ import { generateMaterial, generateComprehensiveMaterial } from "../../services/
 import { STUDY_MODES } from "../../utils/constants";
 import { parseError, calculateReadingTime } from "../../utils/helpers";
 import CustomDropdown from "../common/CustomDropdown";
+import {
+    BookIcon,
+    ClipboardIcon,
+    CheckCircleIcon
+} from "../common/Icons";
+import remarkMath from 'remark-math';
+import remarkGfm from 'remark-gfm';
+import rehypeKatex from 'rehype-katex';
+import rehypeRaw from 'rehype-raw';
+import ReactMarkdown from 'react-markdown';
+import { marked } from 'marked';
 import "./StudentComponents.css";
 
 export default function StudyMaterial() {
@@ -19,6 +30,7 @@ export default function StudyMaterial() {
 
     const [selectedSyllabus, setSelectedSyllabus] = useState(null);
     const [selectedTopic, setSelectedTopic] = useState("");
+    const [selectedSubtopic, setSelectedSubtopic] = useState("");
     const [selectedMode, setSelectedMode] = useState("intermediate");
     const [material, setMaterial] = useState(null);
     const [loading, setLoading] = useState(false);
@@ -49,9 +61,24 @@ export default function StudyMaterial() {
             setError("");
 
             const response = await api.get(`${endpoints.student.materials}/${id}`);
-            const savedMaterial = response.data.material;
+            let savedMaterial = response.data.material;
 
             if (savedMaterial) {
+                // Fallback for older materials saved as raw JSON strings
+                if (typeof savedMaterial.content === 'string' && savedMaterial.content.trim().startsWith('{')) {
+                    try {
+                        const parsed = JSON.parse(savedMaterial.content);
+                        if (parsed.content) {
+                            savedMaterial.content = parsed.content;
+                            if (parsed.sections && parsed.sections.length > 0) {
+                                savedMaterial.sections = parsed.sections;
+                            }
+                        }
+                    } catch (e) {
+                        // Not valid JSON, keep as is
+                    }
+                }
+
                 setMaterial(savedMaterial);
                 setSelectedTopic(savedMaterial.topic);
                 setSelectedMode(savedMaterial.mode);
@@ -118,140 +145,86 @@ export default function StudyMaterial() {
         return selectedSyllabus.topics?.find(t => t.name === selectedTopic);
     };
 
-    // Helper function to format content with code block detection
-    const formatContentWithCode = (text) => {
-        if (!text) return [];
+    // Inner component for Copy Button to handle state
+    const CopyButton = ({ content }) => {
+        const [copied, setCopied] = useState(false);
 
-        // Split content by code blocks (```language\ncode\n```)
-        const parts = [];
-        const codeBlockRegex = /```(\w+)?\n?([\s\S]*?)```/g;
-        let lastIndex = 0;
-        let match;
-
-        while ((match = codeBlockRegex.exec(text)) !== null) {
-            // Add text before code block
-            if (match.index > lastIndex) {
-                const textBefore = text.slice(lastIndex, match.index);
-                parts.push({ type: 'text', content: textBefore });
-            }
-
-            // Add code block
-            parts.push({
-                type: 'code-block',
-                language: match[1] || 'plaintext',
-                content: match[2].trim()
-            });
-
-            lastIndex = match.index + match[0].length;
-        }
-
-        // Add remaining text
-        if (lastIndex < text.length) {
-            parts.push({ type: 'text', content: text.slice(lastIndex) });
-        }
-
-        // If no code blocks found, return the whole text as one part
-        if (parts.length === 0) {
-            parts.push({ type: 'text', content: text });
-        }
-
-        return parts;
-    };
-
-    // Helper to format inline code within text
-    const formatInlineCode = (text) => {
-        if (!text) return text;
-        // Replace `code` with styled span
-        let formatted = text.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>');
-        // Replace **bold** with strong tags
-        formatted = formatted.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-        return formatted;
-    };
-
-    // Render content part (text or code block)
-    const renderContentPart = (part, index) => {
-        if (part.type === 'code-block') {
-            return (
-                <div key={index} className="code-block">
-                    <div className="code-header">
-                        <span className="code-language">{part.language}</span>
-                        <button
-                            className="copy-btn"
-                            onClick={() => {
-                                navigator.clipboard.writeText(part.content);
-                            }}
-                        >
-                            📋 Copy
-                        </button>
-                    </div>
-                    <pre><code>{part.content}</code></pre>
-                </div>
-            );
-        }
-
-        // Text part - split by lines and handle markdown headers, bullets, and inline code
-        const elements = [];
-        const lines = part.content.split('\n');
-        let currentList = [];
-
-        const flushList = () => {
-            if (currentList.length > 0) {
-                elements.push(
-                    <ul key={`${index}-list-${elements.length}`} className="content-list">
-                        {currentList.map((item, i) => (
-                            <li key={i} dangerouslySetInnerHTML={{ __html: formatInlineCode(item) }} />
-                        ))}
-                    </ul>
-                );
-                currentList = [];
-            }
+        const handleCopy = () => {
+            navigator.clipboard.writeText(content);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
         };
 
-        lines.forEach((line, pIndex) => {
-            const trimmedLine = line.trim();
-            if (!trimmedLine) {
-                flushList();
-                return;
-            }
+        return (
+            <button
+                className={`copy-btn ${copied ? 'copied' : ''}`}
+                onClick={handleCopy}
+            >
+                {copied ? (
+                    <>
+                        <CheckCircleIcon /> Copied!
+                    </>
+                ) : (
+                    <>
+                        <ClipboardIcon /> Copy
+                    </>
+                )}
+            </button>
+        );
+    };
 
-            // Check for markdown headers
-            if (trimmedLine.startsWith('### ')) {
-                flushList();
-                elements.push(
-                    <h4 key={`${index}-${pIndex}`} className="content-heading-3">
-                        {trimmedLine.substring(4)}
-                    </h4>
+    const MarkdownComponents = {
+        code({ node, inline, className, children, ...props }) {
+            const match = /language-(\w+)/.exec(className || '');
+            const language = match ? match[1] : 'text';
+            const codeString = String(children).replace(/\n$/, '');
+
+            if (!inline && match) {
+                return (
+                    <div className="code-block">
+                        <div className="code-header">
+                            <span className="code-language">{language}</span>
+                            <CopyButton content={codeString} />
+                        </div>
+                        <pre>
+                            <code className={className} {...props}>
+                                {children}
+                            </code>
+                        </pre>
+                    </div>
                 );
-                return;
             }
-            if (trimmedLine.startsWith('## ')) {
-                flushList();
-                elements.push(
-                    <h3 key={`${index}-${pIndex}`} className="content-heading-2">
-                        {trimmedLine.substring(3)}
-                    </h3>
-                );
-                return;
-            }
-
-            // Check for bullet points
-            if (trimmedLine.startsWith('- ')) {
-                currentList.push(trimmedLine.substring(2));
-                return;
-            }
-
-            // Regular paragraph
-            flushList();
-            elements.push(
-                <p
-                    key={`${index}-${pIndex}`}
-                    dangerouslySetInnerHTML={{ __html: formatInlineCode(trimmedLine) }}
-                />
+            return (
+                <code className={`inline-code ${className || ''}`} {...props}>
+                    {children}
+                </code>
             );
-        });
-
-        flushList(); // Flush any remaining list items
-        return elements;
+        },
+        table({ node, ...props }) {
+            return (
+                <div className="table-responsive" style={{ margin: '16px 0', overflowX: 'auto' }}>
+                    <table className="content-table" style={{ width: '100%', borderCollapse: 'collapse', border: '1px solid var(--border-color)', textAlign: 'left' }} {...props} />
+                </div>
+            );
+        },
+        thead({ node, ...props }) {
+            return <thead style={{ backgroundColor: 'var(--surface-color)' }} {...props} />;
+        },
+        th({ node, ...props }) {
+            return <th style={{ padding: '12px 16px', borderBottom: '2px solid var(--border-color)', fontWeight: '600' }} {...props} />;
+        },
+        td({ node, ...props }) {
+            return <td style={{ padding: '12px 16px', borderBottom: '1px solid var(--border-color)' }} {...props} />;
+        },
+        h2({ node, ...props }) {
+            return <h3 className="content-heading-2" {...props} />;
+        },
+        h3({ node, ...props }) {
+            return <h4 className="content-heading-3" {...props} />;
+        },
+        img() {
+            return null; // Images are explicitly excluded from study material
+        }
     };
 
     // Mode configuration for UI
@@ -259,19 +232,35 @@ export default function StudyMaterial() {
         {
             id: STUDY_MODES.SHORT,
             label: "Short",
-            icon: "⚡",
+            icon: (
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="22" height="22">
+                    <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+                </svg>
+            ),
             description: "Quick overview covering key concepts"
         },
         {
             id: STUDY_MODES.INTERMEDIATE,
             label: "Intermediate",
-            icon: "📘",
+            icon: (
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="22" height="22">
+                    <rect x="3" y="15" width="18" height="4" rx="1" />
+                    <rect x="3" y="9" width="18" height="4" rx="1" />
+                    <rect x="3" y="3" width="18" height="4" rx="1" />
+                </svg>
+            ),
             description: "Balanced explanation with core details"
         },
         {
             id: STUDY_MODES.PRO,
             label: "Pro",
-            icon: "🎓",
+            icon: (
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="22" height="22">
+                    <path d="M6 3h12l4 6-10 13L2 9z" />
+                    <path d="M11 3 8 9l4 13 4-13-3-6" />
+                    <path d="M2 9h20" />
+                </svg>
+            ),
             description: "Comprehensive deep dive with all nuances"
         }
     ];
@@ -289,12 +278,19 @@ export default function StudyMaterial() {
 
         try {
             const topicObj = getSelectedTopicObj();
-            const subtopics = topicObj?.subtopics || [];
+            let subtopicsToGenerate = [];
+            let generateTopicTitle = selectedTopic;
+            if(selectedSubtopic) {
+                subtopicsToGenerate = [selectedSubtopic];
+                generateTopicTitle = `${selectedTopic} - ${selectedSubtopic}`;
+            } else {
+                subtopicsToGenerate = topicObj?.subtopics || [];
+            }
 
             // Use comprehensive generation for intermediate/pro modes with subtopics
-            if ((selectedMode === "intermediate" || selectedMode === "pro") && subtopics.length > 0) {
-                setLoadingStatus(`Generating content for ${subtopics.length} subtopics...`);
-                const result = await generateComprehensiveMaterial(selectedTopic, subtopics, selectedMode);
+            if ((selectedMode === "intermediate" || selectedMode === "pro") && subtopicsToGenerate.length > 0) {
+                setLoadingStatus(`Generating content for ${subtopicsToGenerate.length} subtopic(s)...`);
+                const result = await generateComprehensiveMaterial(selectedSyllabus._id, generateTopicTitle, subtopicsToGenerate, selectedMode);
                 const materialData = result.material || result;
                 setMaterial(materialData);
             } else {
@@ -313,95 +309,10 @@ export default function StudyMaterial() {
     };
 
     // Helper to format content with markdown to HTML for PDF output
+    // Helper to format content with markdown to HTML for PDF output
     const formatContentForPDF = (text) => {
         if (!text) return '';
-
-        const lines = text.split('\n');
-        let html = '';
-        let inList = false;
-        let i = 0;
-
-        while (i < lines.length) {
-            const trimmed = lines[i].trim();
-
-            if (!trimmed) {
-                if (inList) {
-                    html += '</ul>';
-                    inList = false;
-                }
-                i++;
-                continue;
-            }
-
-            // Code blocks (```language ... ```)
-            if (trimmed.startsWith('```') && trimmed !== '```') {
-                // Opening code block with language
-                const langMatch = trimmed.match(/^```(\w+)?/);
-                const language = langMatch?.[1] || 'code';
-                let codeContent = '';
-                i++; // Move past the opening ```
-
-                // Collect code until closing ```
-                while (i < lines.length && !lines[i].trim().startsWith('```')) {
-                    codeContent += lines[i] + '\n';
-                    i++;
-                }
-                i++; // Skip the closing ```
-
-                html += `<div class="code-block-pdf"><span class="code-label">${language.toUpperCase()}</span><pre><code>${codeContent.trim().replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code></pre></div>`;
-                continue;
-            }
-
-            // Skip standalone closing code block markers (shouldn't happen, but just in case)
-            if (trimmed === '```') {
-                i++;
-                continue;
-            }
-
-            // Headers
-            if (trimmed.startsWith('### ')) {
-                if (inList) { html += '</ul>'; inList = false; }
-                html += `<h4 class="pdf-h4">${trimmed.substring(4)}</h4>`;
-                i++;
-                continue;
-            }
-            if (trimmed.startsWith('## ')) {
-                if (inList) { html += '</ul>'; inList = false; }
-                html += `<h3 class="pdf-h3">${trimmed.substring(3)}</h3>`;
-                i++;
-                continue;
-            }
-
-            // Bullet points
-            if (trimmed.startsWith('- ')) {
-                if (!inList) {
-                    html += '<ul class="pdf-list">';
-                    inList = true;
-                }
-                let content = trimmed.substring(2);
-                content = content.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-                content = content.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>');
-                html += `<li>${content}</li>`;
-                i++;
-                continue;
-            }
-
-            // Close list if we hit a non-bullet line
-            if (inList) {
-                html += '</ul>';
-                inList = false;
-            }
-
-            // Regular paragraph - handle bold and inline code
-            let content = trimmed;
-            content = content.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-            content = content.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>');
-            html += `<p>${content}</p>`;
-            i++;
-        }
-
-        if (inList) html += '</ul>';
-        return html;
+        return marked.parse(text);
     };
 
     const handleDownloadPDF = () => {
@@ -413,6 +324,12 @@ export default function StudyMaterial() {
             <html>
             <head>
                 <title>${material.topic} - Study Material</title>
+                <!-- KaTeX for Math Rendering in PDF -->
+                <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+                <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+                <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js" 
+                    onload="renderMathInElement(document.body, { delimiters: [{left: '$$', right: '$$', display: true}, {left: '$', right: '$', display: false}, {left: '\\\\(', right: '\\\\)', display: false}, {left: '\\\\[', right: '\\\\]', display: true}] });">
+                </script>
                 <style>
                     * { box-sizing: border-box; }
                     body { 
@@ -590,6 +507,31 @@ export default function StudyMaterial() {
                     .code-block-pdf {
                         margin: 16px 0;
                     }
+                    /* PDF Table Styles */
+                    table {
+                        width: 100%;
+                        border-collapse: collapse;
+                        margin: 20px 0;
+                        font-size: 13px;
+                        page-break-inside: avoid;
+                    }
+                    th, td {
+                        border: 1px solid #d0d7de;
+                        padding: 10px 14px;
+                        text-align: left;
+                    }
+                    th {
+                        background-color: #f6f8fa !important;
+                        font-weight: 600;
+                        color: #24292f;
+                        -webkit-print-color-adjust: exact;
+                        print-color-adjust: exact;
+                    }
+                    tr:nth-child(even) {
+                        background-color: #fcfcfc !important;
+                        -webkit-print-color-adjust: exact;
+                        print-color-adjust: exact;
+                    }
                     /* Print-specific styles for A4 page layout */
                     @page {
                         size: A4;
@@ -662,8 +604,9 @@ export default function StudyMaterial() {
                     }
                 </style>
             </head>
+
             <body>
-                <h1>📚 ${material.topic}</h1>
+                <h1>${material.topic}</h1>
                 <div class="meta">
                     <span class="meta-item"><strong>Mode:</strong> ${material.mode}</span>
                     <span class="meta-item"><strong>Reading time:</strong> ${calculateReadingTime(material.content)} min</span>
@@ -672,7 +615,7 @@ export default function StudyMaterial() {
                 
                 ${material.sections?.length > 1 ? `
                 <div class="toc">
-                    <h3>📋 Table of Contents</h3>
+                    <h3>Table of Contents</h3>
                     <ol>
                         ${material.sections.map((s, i) => `<li>${s.title}</li>`).join('')}
                     </ol>
@@ -685,27 +628,26 @@ export default function StudyMaterial() {
                             <h2>${index + 1}. ${section.title}</h2>
                         </div>
                         <div class="section-body">
-                            ${section.overview ? `<div class="overview">${section.overview}</div>` : ''}
-                            <div class="content">${formatContentForPDF(section.content)}</div>
+                            <div class="content">${marked.parse(section.content)}</div>
                             ${section.keyPoints?.length > 0 ? `
                                 <div class="key-points">
-                                    <h4>🔑 Key Points</h4>
+                                    <h4>Key Points</h4>
                                     <ul>
-                                        ${section.keyPoints.map(point => `<li>${point}</li>`).join('')}
+                                        ${section.keyPoints.map((kp, i) => `<li>${kp}</li>`).join('')}
                                     </ul>
                                 </div>
                             ` : ''}
                             ${section.examples?.length > 0 ? `
                                 <div class="examples">
-                                    <h4>💡 Examples</h4>
+                                    <h4>Examples</h4>
                                     <ul>
-                                        ${section.examples.map(ex => `<li>${ex}</li>`).join('')}
+                                        ${section.examples.map(ex => `<li>${ex.replace(/^[\s•\-\*]+/, '')}</li>`).join('')}
                                     </ul>
                                 </div>
                             ` : ''}
                         </div>
                     </div>
-                `).join('') || `<div class="content"><p>${material.content}</p></div>`}
+                `).join('') || `<div class="content"><p>${marked.parse(material.content || '')}</p></div>`}
                 <div class="footer">Generated by LearnAI - Digital Learning Platform | ${new Date().toLocaleDateString()}</div>
             </body>
             </html>
@@ -744,9 +686,7 @@ export default function StudyMaterial() {
             });
 
             setShowSaveModal(false);
-            if (confirm("Study material saved successfully! Would you like to view your saved materials?")) {
-                navigate("/student/saved-materials");
-            }
+            navigate("/student/saved-materials");
         } catch (err) {
             console.error("Error saving material:", err);
             alert("Failed to save material. Please try again.");
@@ -771,16 +711,12 @@ export default function StudyMaterial() {
     return (
         <div className="study-material">
             <div className="page-header">
-                <h1>📖 Study Material Generator</h1>
+                <h1>Study Material Generator</h1>
             </div>
 
             {error && <div className="alert alert-error">{error}</div>}
 
-            <div className="features-grid">
-                <div className="feature-badge">🤖 AI Powered</div>
-                <div className="feature-badge">📚 Custom Syllabus</div>
-                <div className="feature-badge">📄 Instant PDF</div>
-            </div>
+
 
             <div className="material-generator">
                 {!material && (
@@ -788,7 +724,7 @@ export default function StudyMaterial() {
                         <div className="setup-section">
                             <h3>Content Source</h3>
 
-                            <label style={{ display: 'block', marginBottom: '12px', color: '#a5b4fc', fontSize: '0.9rem', fontWeight: '600' }}>Select Syllabus</label>
+                            <label style={{ display: 'block', marginBottom: '8px', color: '#a5b4fc', fontSize: '0.9rem', fontWeight: '600' }}>Select Syllabus</label>
                             <div className="syllabus-grid">
                                 {syllabi.map((s) => (
                                     <div
@@ -799,7 +735,7 @@ export default function StudyMaterial() {
                                             setSelectedTopic("");
                                         }}
                                     >
-                                        <span style={{ fontSize: '1.5rem', marginBottom: '8px' }}>📚</span>
+                                        <span className="syllabus-icon"><BookIcon /></span>
                                         <span className="syllabus-name">{s.fileName}</span>
                                         <span className="topic-count">{s.topics?.length || 0} topics</span>
                                     </div>
@@ -807,14 +743,17 @@ export default function StudyMaterial() {
                             </div>
 
                             {selectedSyllabus && (
-                                <div style={{ marginTop: '24px' }}>
-                                    <label style={{ display: 'block', marginBottom: '12px', color: '#a5b4fc', fontSize: '0.9rem', fontWeight: '600' }}>Select Topic</label>
+                                <div style={{ marginTop: '16px' }}>
+                                    <label style={{ display: 'block', marginBottom: '8px', color: '#a5b4fc', fontSize: '0.9rem', fontWeight: '600' }}>Select Topic</label>
                                     <div className="topics-grid">
                                         {selectedSyllabus.topics?.map((topic, index) => (
                                             <div
                                                 key={index}
                                                 className={`topic-chip ${selectedTopic === topic.name ? "selected" : ""}`}
-                                                onClick={() => setSelectedTopic(topic.name)}
+                                                onClick={() => {
+                                                    setSelectedTopic(topic.name);
+                                                    setSelectedSubtopic("");
+                                                }}
                                             >
                                                 <span>{topic.name}</span>
                                             </div>
@@ -822,29 +761,57 @@ export default function StudyMaterial() {
                                     </div>
                                 </div>
                             )}
+
+                            {selectedTopic && topicObj?.subtopics?.length > 0 && (
+                                <div style={{ marginTop: '16px' }}>
+                                    <label style={{ display: 'block', marginBottom: '8px', color: '#a5b4fc', fontSize: '0.9rem', fontWeight: '600' }}>
+                                        Select Subtopic (Optional - Leave blank to generate entire topic)
+                                    </label>
+                                    <div className="topics-grid">
+                                        {topicObj.subtopics.map((st, index) => (
+                                            <div
+                                                key={`st-${index}`}
+                                                className={`topic-chip ${selectedSubtopic === st ? "selected" : ""}`}
+                                                onClick={() => setSelectedSubtopic(selectedSubtopic === st ? "" : st)}
+                                            >
+                                                <span>{st}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
                         </div>
 
-                        {/* Show subtopics preview if available */}
-                        {topicObj?.subtopics?.length > 0 && (
+                        {/* Show subtopics preview if available and no specific subtopic selected */}
+                        {topicObj?.subtopics?.length > 0 && !selectedSubtopic && (
                             <div className="setup-section">
                                 <h3>Topic Scope</h3>
                                 <div className="subtopics-preview">
-                                    <label>Subtopics to cover</label>
-                                    <ul className="subtopics-list">
+                                    <label>Learning Path</label>
+                                    <div className="subtopics-timeline">
                                         {topicObj.subtopics.map((st, i) => (
-                                            <li key={i}>{st}</li>
+                                            <div
+                                                className="subtopic-node"
+                                                key={i}
+                                                style={{ animationDelay: `${i * 0.15}s` }}
+                                            >
+                                                <div className="node-connector">
+                                                    <div className="node-dot"></div>
+                                                    {i < topicObj.subtopics.length - 1 && <div className="node-line" style={{ animationDelay: `${(i * 0.15) + 0.1}s` }}></div>}
+                                                </div>
+                                                <div className="node-content">
+                                                    <span className="node-text">{st}</span>
+                                                </div>
+                                            </div>
                                         ))}
-                                    </ul>
-                                    <p className="subtopics-note">
-                                        ℹ️ In Intermediate/Pro mode, each subtopic will be covered in detail.
-                                    </p>
+                                    </div>
                                 </div>
                             </div>
                         )}
 
                         <div className="setup-section">
                             <h3>Depth & Detail</h3>
-                            <label style={{ display: 'block', marginBottom: '12px', color: '#a5b4fc', fontSize: '0.9rem', fontWeight: '600' }}>Select Generation Mode</label>
+                            <label style={{ display: 'block', marginBottom: '8px', color: '#a5b4fc', fontSize: '0.9rem', fontWeight: '600' }}>Select Generation Mode</label>
                             <div className="mode-selection-grid">
                                 {MODE_CONFIG.map((mode) => (
                                     <div
@@ -880,7 +847,7 @@ export default function StudyMaterial() {
                                     {loadingStatus}
                                 </>
                             ) : (
-                                "✨ Generate Study Material"
+                                "Generate Study Material"
                             )}
                         </button>
                     </div>
@@ -889,72 +856,75 @@ export default function StudyMaterial() {
                 {material && (
                     <div className="material-content">
                         <div className="material-header">
-                            <h2>{material.topic}</h2>
-                            <div className="material-meta">
-                                <span>📚 {material.mode} mode</span>
-                                <span>⏱️ {calculateReadingTime(material.content)} min read</span>
-                                {material.subtopicsCount && (
-                                    <span>📑 {material.successCount || material.subtopicsCount}/{material.subtopicsCount} sections</span>
-                                )}
-                            </div>
+                            <h1 align="center">{material.topic}</h1>
                         </div>
 
                         <div className="material-body">
-                            {material.sections && material.sections.length > 0 ? (
-                                material.sections.map((section, index) => (
-                                    <div key={index} className="material-section">
-                                        <h3>
-                                            <span className="section-number">{index + 1}</span>
-                                            {" "}{section.title}
-                                        </h3>
-
-                                        {section.overview && (
-                                            <div className="section-overview">
-                                                {section.overview}
-                                            </div>
-                                        )}
-
-                                        <div className="section-content">
-                                            {formatContentWithCode(section.content).map((part, pIndex) =>
-                                                renderContentPart(part, pIndex)
-                                            )}
-                                        </div>
-
-                                        {section.keyPoints?.length > 0 && (
-                                            <div className="key-points">
-                                                <h4>🔑 Key Points:</h4>
-                                                <ul>
-                                                    {section.keyPoints.map((point, i) => (
-                                                        <li key={i}>{point}</li>
-                                                    ))}
-                                                </ul>
-                                            </div>
-                                        )}
-
-                                        {section.examples?.length > 0 && (
-                                            <div className="examples-box">
-                                                <h4>💡 Examples:</h4>
-                                                <ul>
-                                                    {section.examples.map((ex, i) => (
-                                                        <li key={i}>{ex}</li>
-                                                    ))}
-                                                </ul>
-                                            </div>
-                                        )}
-                                    </div>
-                                ))
-                            ) : (
+                            {/* Only render the main content if there are no structured sections */}
+                            {material.content && (!material.sections || material.sections.length === 0) && (
                                 <div className="material-text">
-                                    {formatContentWithCode(material.content).map((part, pIndex) =>
-                                        renderContentPart(part, pIndex)
-                                    )}
+                                    <ReactMarkdown
+                                        remarkPlugins={[remarkGfm, remarkMath]}
+                                        rehypePlugins={[rehypeKatex, rehypeRaw]}
+                                        components={MarkdownComponents}
+                                    >
+                                        {material.content}
+                                    </ReactMarkdown>
+                                </div>
+                            )}
+
+                            {material.sections && material.sections.length > 0 && (
+                                <div className="material-sections-container">
+                                    {material.sections.map((section, index) => (
+                                        <div key={index} className="material-section">
+                                            <div className="section-header">
+                                                <h3 className="section-title">
+                                                    <span className="section-number">{index + 1}</span>
+                                                    {section.title}
+                                                </h3>
+                                            </div>
+
+                                            <div className="section-body">
+                                                <div className="content-rendered">
+                                                    <ReactMarkdown
+                                                        remarkPlugins={[remarkGfm, remarkMath]}
+                                                        rehypePlugins={[rehypeKatex, rehypeRaw]}
+                                                        components={MarkdownComponents}
+                                                    >
+                                                        {section.content}
+                                                    </ReactMarkdown>
+                                                </div>
+
+                                                {section.keyPoints && section.keyPoints.length > 0 && (
+                                                    <div className="content-rendered">
+                                                        <h4 style={{ marginTop: '24px' }}>Key Takeaways</h4>
+                                                        <ul className="content-list" style={{ listStyleType: 'disc', paddingLeft: '28px' }}>
+                                                            {section.keyPoints.map((point, kIndex) => (
+                                                                <li style={{ marginBottom: '8px' }} key={kIndex}>{point}</li>
+                                                            ))}
+                                                        </ul>
+                                                    </div>
+                                                )}
+
+                                                {section.examples && section.examples.length > 0 && (
+                                                    <div className="content-rendered">
+                                                        <h4 style={{ marginTop: '24px' }}>Examples</h4>
+                                                        <ul className="content-list" style={{ listStyleType: 'circle', paddingLeft: '28px' }}>
+                                                            {section.examples.map((ex, i) => (
+                                                                <li style={{ marginBottom: '8px' }} key={i}>{ex.replace(/^[\s•\-\*]+/, '')}</li>
+                                                            ))}
+                                                        </ul>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    ))}
                                 </div>
                             )}
                         </div>
 
                         <div className="material-actions">
-                            <button className="btn-secondary" onClick={handleDownloadPDF}>📥 Download PDF</button>
-                            <button className="save-btn" onClick={handleSaveClick}>💾 Save to Library</button>
+                            <button className="save-btn" onClick={handleSaveClick}>Save to Library</button>
                         </div>
                     </div>
                 )}

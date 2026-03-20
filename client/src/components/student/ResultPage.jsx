@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, Link, useLocation } from "react-router-dom";
-import { getSessionResult } from "../../services/openai";
+import { getSessionResult, getSessionQuestions } from "../../services/openai";
 import { ROUTES } from "../../utils/constants";
 import {
     formatPercentage,
@@ -9,6 +9,12 @@ import {
     getDifficultyColor,
     parseError,
 } from "../../utils/helpers";
+import {
+    CheckCircleIcon,
+    XCircleIcon,
+    ChevronLeftIcon,
+    ChevronRightIcon
+} from "../common/Icons";
 import "./StudentComponents.css";
 
 export default function ResultPage() {
@@ -17,16 +23,50 @@ export default function ResultPage() {
     const [result, setResult] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
+    const [questions, setQuestions] = useState([]);
+    const [currentQIndex, setCurrentQIndex] = useState(0);
 
     // Determine back link properties based on where we came from
-    const fromPath = location.state?.from === 'analytics' ? ROUTES.STUDENT.ANALYTICS : ROUTES.STUDENT.DASHBOARD;
-    const backLabel = location.state?.from === 'analytics' ? 'Back to Analytics' : 'Back to Dashboard';
+    let fromPath = ROUTES.STUDENT.DASHBOARD;
+    let backLabel = 'Back to Dashboard';
+    let backState = undefined;
+
+    if (location.state?.from === 'dashboard') {
+        fromPath = ROUTES.STUDENT.DASHBOARD;
+        backLabel = 'Back to Dashboard';
+    } else if (location.state?.from === 'history') {
+        fromPath = ROUTES.STUDENT.SESSIONS;
+        const fm = location.state.filterMode;
+        backLabel = fm ? `Back to ${fm.charAt(0).toUpperCase() + fm.slice(1)} History` : 'Back to History';
+        if (fm) {
+            backState = { filterMode: fm };
+        }
+    } else if (location.state?.from === 'analytics') {
+        fromPath = ROUTES.STUDENT.ANALYTICS;
+        backLabel = 'Back to Analytics';
+    } else if (result?.type) {
+        const typeStr = result.type.toLowerCase();
+        if (typeStr === 'test') {
+            fromPath = ROUTES.STUDENT.TEST;
+            backLabel = 'Back to Test';
+        } else if (typeStr === 'practice') {
+            fromPath = ROUTES.STUDENT.PRACTICE;
+            backLabel = 'Back to Practice';
+        } else if (typeStr === 'quiz') {
+            fromPath = ROUTES.STUDENT.QUIZ;
+            backLabel = 'Back to Quiz';
+        }
+    }
 
     useEffect(() => {
-        const fetchResult = async () => {
+        const fetchData = async () => {
             try {
-                const data = await getSessionResult(sessionId);
-                setResult(data.result);
+                const [resultData, questionsData] = await Promise.all([
+                    getSessionResult(sessionId),
+                    getSessionQuestions(sessionId),
+                ]);
+                setResult(resultData.result);
+                setQuestions(questionsData.questions || []);
             } catch (err) {
                 setError(parseError(err));
             } finally {
@@ -34,7 +74,7 @@ export default function ResultPage() {
             }
         };
 
-        fetchResult();
+        fetchData();
     }, [sessionId]);
 
     if (loading) {
@@ -51,23 +91,36 @@ export default function ResultPage() {
 
     const grade = calculateGrade(result.score?.percentage || 0);
     const isPassing = result.score?.percentage >= 50;
+    const currentQ = questions[currentQIndex];
 
     return (
         <div className="result-page">
             <div className="result-header">
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
+                    <Link to={fromPath} state={backState} className="back-chevron" title={backLabel}>
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" width="22" height="22">
+                            <polyline points="15 18 9 12 15 6" />
+                        </svg>
+                    </Link>
+                    {result.type && (
+                        <span style={{ fontSize: '1.1rem', fontWeight: '500', color: 'var(--text-main)', textTransform: 'capitalize' }}>
+                            {result.type}
+                        </span>
+                    )}
+                </div>
                 <div className={`grade-circle ${isPassing ? "pass" : "fail"}`}>
                     <span className="grade-letter">{grade}</span>
                     <span className="grade-percentage">{formatPercentage(result.score?.percentage)}</span>
                 </div>
                 <div className="result-title">
-                    <h1>{isPassing ? "Congratulations! 🎉" : "Keep Practicing! 💪"}</h1>
+                    <h1>{isPassing ? "Congratulations!" : "Keep Practicing!"}</h1>
                     <p>Your {result.type} session has been completed</p>
                 </div>
             </div>
 
             <div className="score-summary">
                 <div className="summary-card">
-                    <span className="summary-icon">📊</span>
+                    <span className="summary-icon"></span>
                     <div>
                         <span className="summary-value">
                             {result.score?.obtained}/{result.score?.total}
@@ -76,21 +129,21 @@ export default function ResultPage() {
                     </div>
                 </div>
                 <div className="summary-card">
-                    <span className="summary-icon">🎯</span>
+                    <span className="summary-icon"></span>
                     <div>
                         <span className="summary-value">{formatPercentage(result.accuracy)}</span>
                         <span className="summary-label">Accuracy</span>
                     </div>
                 </div>
                 <div className="summary-card">
-                    <span className="summary-icon">⏱️</span>
+                    <span className="summary-icon"></span>
                     <div>
                         <span className="summary-value">{formatTime(result.timeSpent?.total)}</span>
                         <span className="summary-label">Time Spent</span>
                     </div>
                 </div>
                 <div className="summary-card">
-                    <span className="summary-icon">📝</span>
+                    <span className="summary-icon"></span>
                     <div>
                         <span className="summary-value">
                             {result.questionBreakdown?.correct}/{result.questionBreakdown?.total}
@@ -102,7 +155,7 @@ export default function ResultPage() {
 
             <div className="result-breakdown">
                 <div className="breakdown-section">
-                    <h3>📈 Question Breakdown</h3>
+                    <h3>Question Breakdown</h3>
                     <div className="breakdown-chart">
                         <div className="bar-chart">
                             <div
@@ -136,7 +189,7 @@ export default function ResultPage() {
                 </div>
 
                 <div className="breakdown-section">
-                    <h3>🎚️ Difficulty Analysis</h3>
+                    <h3>Difficulty Analysis</h3>
                     <div className="difficulty-breakdown">
                         {Object.entries(result.difficultyAnalysis || {}).map(([diff, data]) => (
                             <div key={diff} className="difficulty-item">
@@ -164,7 +217,7 @@ export default function ResultPage() {
                 </div>
 
                 <div className="breakdown-section">
-                    <h3>📚 Topic Performance</h3>
+                    <h3>Topic Performance</h3>
                     <div className="topic-breakdown">
                         {result.topicPerformance?.map((topic, index) => (
                             <div key={index} className="topic-item">
@@ -190,14 +243,15 @@ export default function ResultPage() {
                         ))}
                     </div>
                 </div>
+
             </div>
 
             <div className="result-actions">
-                <Link to={fromPath} className="btn-secondary">
+                <Link to={fromPath} state={backState} className="btn-secondary">
                     {backLabel}
                 </Link>
-                <Link to={ROUTES.STUDENT.ANALYTICS} className="btn-secondary">
-                    View Analytics
+                <Link to={`${ROUTES.STUDENT.REVIEW}/${sessionId}`} className="btn-secondary">
+                    Review Questions
                 </Link>
                 <Link to={ROUTES.STUDENT.PRACTICE} className="btn-primary">
                     Practice More

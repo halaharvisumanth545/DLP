@@ -22,13 +22,18 @@ Be thorough but concise with topic names.`;
     try {
         const result = await generateJSON(prompt, { maxTokens: 1500 });
 
+        let extracted = [];
         if (Array.isArray(result)) {
-            return result;
+            extracted = result;
         } else if (result.topics && Array.isArray(result.topics)) {
-            return result.topics;
+            extracted = result.topics;
         }
 
-        return [];
+        if (extracted.length > 0) {
+            return extracted;
+        }
+        
+        throw new Error("AI returned no topics, using fallback");
     } catch (error) {
         console.error("Topic extraction error:", error);
         // Fallback: basic extraction
@@ -55,6 +60,7 @@ export function extractTopicsBasic(content) {
         const trimmedLine = line.trim();
         if (!trimmedLine) continue;
 
+        let isHeader = false;
         // Check if line matches a header pattern
         for (const pattern of headerPatterns) {
             const match = trimmedLine.match(pattern);
@@ -67,9 +73,12 @@ export function extractTopicsBasic(content) {
                     subtopics: [],
                     estimatedHours: 2, // Default estimate
                 };
+                isHeader = true;
                 break;
             }
         }
+
+        if (isHeader) continue;
 
         // Check for subtopics (indented or bulleted items)
         if (currentTopic) {
@@ -80,12 +89,19 @@ export function extractTopicsBasic(content) {
                 /^\d+\.\d+\s+(.+)/, // 1.1, 1.2 format
             ];
 
+            let matchedSubtopic = false;
             for (const pattern of subtopicPatterns) {
                 const match = trimmedLine.match(pattern);
                 if (match && match[1].length > 3 && match[1].length < 100) {
                     currentTopic.subtopics.push(match[1].trim());
+                    matchedSubtopic = true;
                     break;
                 }
+            }
+            
+            // If it's regular text under a header, treat it as a subtopic
+            if (!matchedSubtopic && trimmedLine.length > 3 && trimmedLine.length < 150) {
+                currentTopic.subtopics.push(trimmedLine);
             }
         }
     }

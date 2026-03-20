@@ -33,6 +33,16 @@ const sessionSchema = new mongoose.Schema(
                 },
             },
         ],
+        questionSwaps: [
+            {
+                questionId: {
+                    type: mongoose.Schema.Types.ObjectId,
+                    ref: "Question",
+                },
+                timeSpent: Number,
+                timestamp: Date,
+            }
+        ],
         answers: [
             {
                 questionId: {
@@ -41,6 +51,13 @@ const sessionSchema = new mongoose.Schema(
                 },
                 userAnswer: String,
                 isCorrect: Boolean,
+                descriptiveScore: {
+                    score: Number,       // 0-10
+                    percentage: Number,  // 0-100
+                    feedback: String,
+                    keyPointsCovered: Number,
+                    totalKeyPoints: Number,
+                },
                 timeSpent: Number, // in seconds
                 isSkipped: Boolean,
                 markedForReview: Boolean,

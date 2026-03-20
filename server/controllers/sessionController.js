@@ -3,11 +3,12 @@ import { Question } from "../models/Question.js";
 import { Result } from "../models/Result.js";
 import { generateQuestions } from "../services/questionService.js";
 import { updateUserAnalytics } from "../services/analyticsService.js";
+import { evaluateDescriptiveAnswer } from "../services/openaiService.js";
 
 // Start a new session (practice/quiz/test/self-assessment)
 export async function startSession(req, res) {
     try {
-        const { type, syllabusId, topics, difficulty = "mixed", questionCount = 10, timeLimit } = req.body;
+        const { type, syllabusId, topics, difficulty = "mixed", questionCount = 10, timeLimit, questionMode = "objective", sectionsConfig } = req.body;
         const userId = req.user.userId;
 
         if (!type || !["practice", "quiz", "test", "self-assessment"].includes(type)) {
@@ -15,12 +16,59 @@ export async function startSession(req, res) {
         }
 
         // Generate or fetch questions
-        const questions = await generateQuestions({
-            syllabusId,
-            topics,
-            difficulty,
-            count: questionCount,
-            type: type === "quiz" ? "mcq" : undefined,
+        let questions = [];
+        let generatedQuestionIds = [];
+
+        if (sectionsConfig && sectionsConfig.length > 0) {
+            for (const section of sectionsConfig) {
+                const sectionQuestions = await generateQuestions({
+                    syllabusId,
+                    topics,
+                    difficulty,
+                    count: section.questionsPerSection,
+                    type: undefined,
+                    userId,
+                    questionMode: section.questionType,
+                    excludeIds: generatedQuestionIds,
+                });
+
+                // Override marks for this section
+                const markedQuestions = sectionQuestions.map(q => {
+                    q.marks = section.marksPerQuestion;
+                    return q;
+                });
+                
+                questions.push(...markedQuestions);
+                
+                // Track generated question IDs to prevent duplicates in next iterations
+                markedQuestions.forEach(q => {
+                    if (q._id) generatedQuestionIds.push(q._id.toString());
+                });
+            }
+        } else {
+            questions = await generateQuestions({
+                syllabusId,
+                topics,
+                difficulty,
+                count: questionCount,
+                type: undefined, // Let questionMode determine the type
+                userId,
+                questionMode,
+            });
+        }
+
+        // SAFETY NET: Remove any duplicate questions by _id and text before creating session
+        const seenIds = new Set();
+        const seenTexts = new Set();
+        questions = questions.filter(q => {
+            const id = q._id?.toString();
+            const text = (q.text || "").toLowerCase().trim();
+            if ((id && seenIds.has(id)) || seenTexts.has(text)) {
+                return false;
+            }
+            if (id) seenIds.add(id);
+            seenTexts.add(text);
+            return true;
         });
 
         // Create session
@@ -90,8 +138,29 @@ export async function submitAnswer(req, res) {
             return res.status(404).json({ error: "Question not found" });
         }
 
-        // Check if correct
-        const isCorrect = answer?.toLowerCase() === question.correctAnswer?.toLowerCase();
+        // Check if correct — descriptive questions get AI evaluation
+        const isDescriptive = question.type === "descriptive" || !question.options?.length;
+        let isCorrect;
+        let descriptiveScore = null;
+
+        if (isDescriptive && answer?.trim()) {
+            // Call OpenAI to evaluate the descriptive answer
+            const evaluation = await evaluateDescriptiveAnswer({
+                question: question.text,
+                modelAnswer: question.correctAnswer || question.explanation || "No model answer provided.",
+                userAnswer: answer,
+            });
+            if (evaluation) {
+                descriptiveScore = evaluation;
+                isCorrect = evaluation.percentage >= 50;
+            } else {
+                isCorrect = null; // Fallback if evaluation fails
+            }
+        } else if (isDescriptive) {
+            isCorrect = null;
+        } else {
+            isCorrect = answer?.toLowerCase() === question.correctAnswer?.toLowerCase();
+        }
 
         // Update or add answer
         const existingAnswerIndex = session.answers.findIndex(
@@ -102,6 +171,7 @@ export async function submitAnswer(req, res) {
             questionId,
             userAnswer: answer,
             isCorrect,
+            descriptiveScore,
             timeSpent: timeSpent || 0,
             isSkipped: !answer,
             markedForReview,
@@ -117,8 +187,10 @@ export async function submitAnswer(req, res) {
 
         res.json({
             message: "Answer submitted",
-            isCorrect: session.type !== "test" ? isCorrect : undefined, // Don't reveal for tests
+            isCorrect: session.type !== "test" ? isCorrect : undefined,
             explanation: session.type === "practice" ? question.explanation : undefined,
+            correctAnswer: session.type === "practice" ? question.correctAnswer : undefined,
+            descriptiveScore: session.type !== "test" ? descriptiveScore : undefined,
         });
     } catch (error) {
         console.error("Submit answer error:", error);
@@ -130,6 +202,7 @@ export async function submitAnswer(req, res) {
 export async function completeSession(req, res) {
     try {
         const { sessionId } = req.params;
+        const { questionSwaps = [] } = req.body;
         const userId = req.user.userId;
 
         const session = await Session.findOne({ _id: sessionId, userId });
@@ -213,6 +286,7 @@ export async function completeSession(req, res) {
                 incorrect: answeredQuestions.length - correctAnswers.length,
                 skipped: totalQuestions - answeredQuestions.length,
             },
+            questionSwaps,
         });
 
         // Update session status
@@ -220,6 +294,7 @@ export async function completeSession(req, res) {
         session.completedAt = new Date();
         session.timeSpent = totalTimeSpent;
         session.score = result.score;
+        session.questionSwaps = questionSwaps;
         await session.save();
 
         // Update user analytics
@@ -259,7 +334,7 @@ export async function getSessionResult(req, res) {
     try {
         const result = await Result.findOne({
             sessionId: req.params.sessionId,
-        });
+        }).populate("sessionId", "totalTimeAllowed type status");
 
         if (!result) {
             return res.status(404).json({ error: "Result not found" });
@@ -274,5 +349,67 @@ export async function getSessionResult(req, res) {
     } catch (error) {
         console.error("Get session result error:", error);
         res.status(500).json({ error: "Failed to get session result" });
+    }
+}
+
+// Get session questions with answers for review
+export async function getSessionQuestions(req, res) {
+    try {
+        const { sessionId } = req.params;
+        const userId = req.user.userId;
+
+        const session = await Session.findOne({ _id: sessionId, userId });
+        if (!session) {
+            return res.status(404).json({ error: "Session not found" });
+        }
+
+        // Build questions with user answers and correct answers
+        const questionsWithAnswers = await Promise.all(
+            session.questions.map(async (q) => {
+                const answer = session.answers.find(
+                    (a) => a.questionId.toString() === q.questionId.toString()
+                );
+
+                // Get correct answer from Question model
+                let correctAnswer = null;
+                let explanation = null;
+                try {
+                    const questionDoc = await Question.findById(q.questionId);
+                    if (questionDoc) {
+                        correctAnswer = questionDoc.correctAnswer;
+                        explanation = questionDoc.explanation;
+
+                        // Fallback if the AI incorrectly generated exactly "N/A"
+                        if ((!correctAnswer || correctAnswer === "N/A") && q.questionData.type === "descriptive") {
+                            correctAnswer = explanation || "No model answer was generated.";
+                        }
+                    }
+                } catch (err) {
+                    // Question may have been deleted
+                }
+
+                return {
+                    questionId: q.questionId,
+                    text: q.questionData.text,
+                    type: q.questionData.type || "mcq",
+                    options: q.questionData.options,
+                    difficulty: q.questionData.difficulty,
+                    topic: q.questionData.topic,
+                    marks: q.questionData.marks,
+                    correctAnswer,
+                    explanation,
+                    userAnswer: answer?.userAnswer || null,
+                    isCorrect: answer?.isCorrect || false,
+                    descriptiveScore: answer?.descriptiveScore || null,
+                    isSkipped: answer ? answer.isSkipped : true,
+                    timeSpent: answer?.timeSpent || 0,
+                };
+            })
+        );
+
+        res.json({ questions: questionsWithAnswers });
+    } catch (error) {
+        console.error("Get session questions error:", error);
+        res.status(500).json({ error: "Failed to get session questions" });
     }
 }

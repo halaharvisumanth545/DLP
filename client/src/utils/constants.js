@@ -6,7 +6,6 @@ export const SESSION_TYPES = {
     PRACTICE: "practice",
     QUIZ: "quiz",
     TEST: "test",
-    SELF_ASSESSMENT: "self-assessment",
 };
 
 // Difficulty levels
@@ -53,7 +52,7 @@ export const ROUTES = {
         PRACTICE: "/student/practice",
         QUIZ: "/student/quiz",
         TEST: "/student/test",
-        SELF_ASSESSMENT: "/student/self-assessment",
+        REVIEW: "/student/review",
         ANALYTICS: "/student/analytics",
         RESULTS: "/student/results",
         SESSIONS: "/student/sessions",
@@ -72,7 +71,6 @@ export const STUDENT_NAV_ITEMS = [
     { label: "Practice", path: ROUTES.STUDENT.PRACTICE, icon: "pencil" },
     { label: "Quiz", path: ROUTES.STUDENT.QUIZ, icon: "lightning" },
     { label: "Test", path: ROUTES.STUDENT.TEST, icon: "clipboard" },
-    { label: "Self Assessment", path: ROUTES.STUDENT.SELF_ASSESSMENT, icon: "target" },
     { label: "Analytics", path: ROUTES.STUDENT.ANALYTICS, icon: "chart" },
 ];
 

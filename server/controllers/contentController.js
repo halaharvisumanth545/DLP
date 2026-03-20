@@ -80,14 +80,18 @@ export async function generateStudyMaterial(req, res) {
             return res.status(404).json({ error: "Syllabus not found" });
         }
 
-        // Check for existing material
-        let material = await StudyMaterial.findOne({ syllabusId, topic, mode, userId });
+        let material = null;
 
         if (!material) {
-            // Generate new content using OpenAI
-            const generatedContent = await generateStudyContent(topic, mode, syllabus.originalContent);
+            // Generate new content using OpenAI and RAG
+            const generatedContent = await generateStudyContent(
+                topic, 
+                mode, 
+                syllabus.originalContent, 
+                { userId, syllabusId }
+            );
 
-            material = await StudyMaterial.create({
+            const materialData = {
                 userId,
                 syllabusId,
                 topic,
@@ -98,7 +102,18 @@ export async function generateStudyMaterial(req, res) {
                     wordCount: generatedContent.content.split(/\s+/).length,
                     estimatedReadTime: Math.ceil(generatedContent.content.split(/\s+/).length / 200),
                 },
-            });
+            };
+
+            // Only auto-save if mode is not 'short'
+            if (mode !== 'short') {
+                material = await StudyMaterial.create(materialData);
+            } else {
+                // For 'short' mode, just return the data structure without saving
+                material = {
+                    _id: 'temp-' + Date.now(), // Give it a temporary ID for frontend rendering
+                    ...materialData
+                };
+            }
         }
 
         res.json({
@@ -164,9 +179,6 @@ export async function deleteSyllabus(req, res) {
         if (!syllabus) {
             return res.status(404).json({ error: "Syllabus not found" });
         }
-
-        // Also delete associated study materials
-        await StudyMaterial.deleteMany({ syllabusId: req.params.id });
 
         res.json({ message: "Syllabus deleted successfully" });
     } catch (error) {
@@ -237,17 +249,23 @@ export async function getAllStudyMaterials(req, res) {
             ];
         }
 
-        const materials = await StudyMaterial.find(query)
-            .select("name topic mode metadata createdAt")
-            .sort({ createdAt: -1 })
-            .skip((page - 1) * limit)
-            .limit(parseInt(limit));
+        let materialsQuery = StudyMaterial.find(query)
+            .select("name topic mode metadata createdAt syllabusId")
+            .populate("syllabusId", "fileName")
+            .sort({ createdAt: -1 });
 
+        if (limit !== 'all') {
+            materialsQuery = materialsQuery
+                .skip((page - 1) * limit)
+                .limit(parseInt(limit));
+        }
+
+        const materials = await materialsQuery;
         const total = await StudyMaterial.countDocuments(query);
 
         res.json({
             materials,
-            pagination: {
+            pagination: limit === 'all' ? { total } : {
                 page: parseInt(page),
                 limit: parseInt(limit),
                 total,
@@ -276,5 +294,104 @@ export async function deleteStudyMaterial(req, res) {
     } catch (error) {
         console.error("Delete study material error:", error);
         res.status(500).json({ error: "Failed to delete study material" });
+    }
+}
+
+// Combine multiple study materials into a single one
+export async function combineMaterials(req, res) {
+    try {
+        const { materialIds, name } = req.body;
+        const userId = req.user.userId;
+
+        if (!materialIds || !Array.isArray(materialIds) || materialIds.length === 0) {
+            return res.status(400).json({ error: "Please provide an array of material IDs to combine." });
+        }
+
+        if (!name || name.trim() === '') {
+            return res.status(400).json({ error: "A name for the combined material is required." });
+        }
+
+        // Fetch all selected materials belonging to the user
+        const materials = await StudyMaterial.find({
+            _id: { $in: materialIds },
+            userId: userId
+        });
+
+        if (materials.length === 0) {
+            return res.status(404).json({ error: "No matching study materials found." });
+        }
+
+        // Maintain the order as requested by the user, if applicable, by sorting 
+        // the fetched materials to match the input materialIds order
+        const sortedMaterials = materialIds.map(id => materials.find(m => m._id.toString() === id)).filter(Boolean);
+
+        let combinedContent = "";
+        let combinedSections = [];
+        let totalWordCount = 0;
+        let totalEstimatedReadTime = 0;
+
+        // Use the syllabusId of the first material as a reference 
+        const syllabusId = sortedMaterials[0].syllabusId;
+
+        // Concatenate content and merge metadata
+        sortedMaterials.forEach((material, index) => {
+            // Add a title separator for the content
+            combinedContent += `\n\n# ${material.name || material.topic}\n\n`;
+            combinedContent += material.content;
+
+            // Merge sections nicely
+            if (material.sections && material.sections.length > 0) {
+                // If they have sections, we prefix their title or just push them
+                material.sections.forEach(section => {
+                    combinedSections.push({
+                        title: `${material.name || material.topic} - ${section.title}`,
+                        content: section.content,
+                        keyPoints: section.keyPoints || []
+                    });
+                });
+            } else {
+                // If no sections but we want to turn it into a section for completeness:
+                combinedSections.push({
+                    title: material.name || material.topic,
+                    content: material.content,
+                    keyPoints: []
+                });
+            }
+
+            if (material.metadata) {
+                totalWordCount += material.metadata.wordCount || 0;
+                totalEstimatedReadTime += material.metadata.estimatedReadTime || 0;
+            }
+        });
+
+        // Create the new combined material
+        const combinedMaterial = await StudyMaterial.create({
+            userId,
+            syllabusId,
+            topic: "Combined Material",
+            name: name,
+            mode: "combined",
+            content: combinedContent,
+            sections: combinedSections,
+            metadata: {
+                wordCount: totalWordCount || combinedContent.split(/\s+/).length,
+                estimatedReadTime: totalEstimatedReadTime || Math.ceil(combinedContent.split(/\s+/).length / 200),
+            }
+        });
+
+        res.status(201).json({
+            message: "Study materials combined successfully",
+            material: {
+                id: combinedMaterial._id,
+                name: combinedMaterial.name,
+                topic: combinedMaterial.topic,
+                mode: combinedMaterial.mode,
+                createdAt: combinedMaterial.createdAt,
+            }
+        });
+
+    } catch (error) {
+        console.error("Combine study materials error:", error);
+        res.status(500).json({ error: "Failed to combine study materials" });
     }
 }

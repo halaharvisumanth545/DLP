@@ -7,58 +7,60 @@
 }
 
 .custom-dropdown .dropdown-trigger {
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 12px;
-    padding: 12px 16px;
+    background: var(--input-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 6px 14px;
     display: flex;
     justify-content: space-between;
     align-items: center;
     cursor: pointer;
     transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-    color: #fff;
-    min-height: 48px;
+    color: var(--text-heading);
+    box-sizing: border-box;
+    font-size: 0.9rem;
+    min-height: 36px;
 }
 
 .custom-dropdown.open .dropdown-trigger {
-    background: rgba(255, 255, 255, 0.08);
-    border-color: #6366f1;
+    background: var(--item-hover);
+    border-color: var(--color-primary);
     box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
 }
 
 .custom-dropdown:not(.disabled) .dropdown-trigger:hover {
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--item-hover);
     border-color: rgba(99, 102, 241, 0.5);
 }
 
 .custom-dropdown.disabled .dropdown-trigger {
     opacity: 0.6;
     cursor: not-allowed;
-    background: rgba(255, 255, 255, 0.02);
+    background: var(--item-hover);
 }
 
 .selected-value {
-    color: #fff;
-    font-size: 1rem;
+    color: var(--text-heading);
+    font-size: 0.9rem;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
 .selected-value.placeholder {
-    color: #9ca3af;
+    color: var(--text-muted);
 }
 
 .dropdown-arrow {
     font-size: 0.7rem;
-    color: #9ca3af;
+    color: var(--text-muted);
     transition: transform 0.3s ease;
     margin-left: 12px;
 }
 
 .custom-dropdown.open .dropdown-arrow {
     transform: rotate(180deg);
-    color: #6366f1;
+    color: var(--color-primary);
 }
 
 .dropdown-menu {
@@ -66,11 +68,11 @@
     top: calc(100% + 6px);
     left: 0;
     width: 100%;
-    background: rgba(30, 30, 46, 0.95);
+    background: var(--glass-bg);
     backdrop-filter: blur(12px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    border: 1px solid var(--border-color);
     border-radius: 12px;
-    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+    box-shadow: 0 10px 40px var(--shadow-color);
     z-index: 1000;
     max-height: 250px;
     overflow-y: auto;
@@ -96,23 +98,23 @@
 }
 
 .dropdown-menu::-webkit-scrollbar-track {
-    background: rgba(255, 255, 255, 0.02);
+    background: var(--item-hover);
     border-radius: 3px;
 }
 
 .dropdown-menu::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.1);
+    background: var(--border-color);
     border-radius: 3px;
 }
 
 .dropdown-menu::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.2);
+    background: var(--border-color-hover);
 }
 
 .dropdown-item {
     padding: 10px 14px;
     border-radius: 8px;
-    color: #d1d5db;
+    color: var(--text-main);
     cursor: pointer;
     transition: all 0.15s;
     font-size: 0.95rem;
@@ -120,17 +122,17 @@
 
 .dropdown-item:hover {
     background: rgba(99, 102, 241, 0.15);
-    color: #fff;
+    color: var(--text-heading);
 }
 
 .dropdown-item.selected {
     background: rgba(99, 102, 241, 0.25);
-    color: #fff;
+    color: var(--text-heading);
     font-weight: 500;
 }
 
 .dropdown-item.no-options {
-    color: #6b7280;
+    color: var(--text-muted);
     text-align: center;
     cursor: default;
     font-style: italic;
@@ -138,5 +140,28 @@
 
 .dropdown-item.no-options:hover {
     background: none;
-    color: #6b7280;
+    color: var(--text-muted);
+}
+
+.dropdown-search {
+    padding: 6px 10px;
+    margin-bottom: 6px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.dropdown-search input {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--input-bg);
+    color: var(--text-heading);
+    font-size: 0.9rem;
+    transition: all 0.2s;
+}
+
+.dropdown-search input:focus {
+    outline: none;
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
 }

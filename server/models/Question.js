@@ -12,7 +12,7 @@ const questionSchema = new mongoose.Schema(
         },
         type: {
             type: String,
-            enum: ["mcq", "short", "long", "true-false"],
+            enum: ["mcq", "short", "long", "true-false", "descriptive"],
             default: "mcq",
         },
         text: {
@@ -42,6 +42,11 @@ const questionSchema = new mongoose.Schema(
             default: 1,
         },
         tags: [String],
+        bloomLevel: {
+            type: String,
+            enum: ["remember", "understand", "apply", "analyze", "evaluate", "create"],
+            default: "understand",
+        },
         isAIGenerated: {
             type: Boolean,
             default: true,
@@ -53,5 +58,6 @@ const questionSchema = new mongoose.Schema(
 // Indexes for efficient queries
 questionSchema.index({ topic: 1, difficulty: 1 });
 questionSchema.index({ syllabusId: 1, type: 1 });
+questionSchema.index({ topic: 1, bloomLevel: 1, difficulty: 1 });
 
 export const Question = mongoose.model("Question", questionSchema, "questions");

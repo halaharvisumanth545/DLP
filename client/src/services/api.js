@@ -46,6 +46,9 @@ export const endpoints = {
     login: "/api/auth/login",
     register: "/api/auth/register",
     profile: "/api/auth/profile",
+    forgotPassword: "/api/auth/forgot-password",
+    resetPassword: "/api/auth/reset-password",
+    editPassword: "/api/auth/edit-password",
 
     // Student (nested for service compatibility)
     student: {
@@ -55,6 +58,7 @@ export const endpoints = {
         materials: "/api/student/study-materials",
         generateMaterial: "/api/student/study-materials/generate",
         saveMaterial: "/api/student/study-materials/save",
+        combineMaterials: "/api/student/study-materials/combine",
         getAllMaterials: "/api/student/study-materials",
         deleteMaterial: "/api/student/study-materials", // Will append /:id
         // Sessions
@@ -80,4 +84,12 @@ export const endpoints = {
         parseSyllabus: "/api/openai/parse-syllabus",
         analyzeWeakness: "/api/openai/analyze-weakness",
     },
+
+    // RAG (Textbook-Augmented Generation) — detached
+    // rag: {
+    //     uploadTextbook: "/api/rag/upload-textbook",
+    //     search: "/api/rag/search",
+    //     generateWithRAG: "/api/rag/generate-with-rag",
+    //     textbooks: "/api/rag/textbooks",
+    // },
 };

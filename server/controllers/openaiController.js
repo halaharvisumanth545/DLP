@@ -1,9 +1,11 @@
 import { generateCompletion, generateJSON } from "../config/openai.js";
+import { retrieveRelevantChunks } from "../services/ragService.js";
 
 // Generate study material using OpenAI (single API call - for short mode)
 export async function generateMaterial(req, res) {
     try {
-        const { topic, mode = "intermediate", context } = req.body;
+        const { topic, mode = "intermediate", context, syllabusId } = req.body;
+        const userId = req.user.userId;
 
         if (!topic) {
             return res.status(400).json({ error: "Topic is required" });
@@ -15,16 +17,26 @@ export async function generateMaterial(req, res) {
             pro: "comprehensive deep-dive with advanced concepts (1000+ words total)",
         };
 
-        const prompt = `Generate educational study material about "${topic}" in ${modeDescriptions[mode]} format.
+        // Retrieve context using RAG
+        console.log(`[Material] Retrieving RAG context for topic: ${topic}`);
+        const chunks = await retrieveRelevantChunks(topic, { userId, syllabusId }, 5);
+        const scrapedContext = chunks.map((c, i) => `--- Textbook Excerpt ${i + 1} (from "${c.fileName}", ~p.${c.pageEstimate}, relevance: ${(c.score * 100).toFixed(1)}%) ---\n${c.text}`).join("\n\n");
+
+        const prompt = `Generate educational study material about "${topic}" in ${modeDescriptions[mode]} format. Make it a nice and well-formatted document for student preparation.
 
 ${context ? `Context from syllabus: ${context.substring(0, 500)}` : ""}
+
+Use the following excerpt(s) from the student's actual course textbook to ground your answer. Note: The material produced from this textbook context is very important for students, and it's very essential to generate coherent, high-quality content.
+---START TEXTBOOK CONTEXT---
+${scrapedContext}
+---END TEXTBOOK CONTEXT---
 
 Return a JSON object with this exact structure:
 {
     "sections": [
         {
             "title": "Introduction/Overview",
-            "content": "Content for this section as plain text...",
+            "content": "Content for this section in markdown...",
             "keyPoints": ["Key point 1", "Key point 2", "Key point 3"]
         },
         {
@@ -45,10 +57,10 @@ Return a JSON object with this exact structure:
     ]
 }
 
-Make sure each section has meaningful educational content. The content field should be plain text paragraphs (not markdown or HTML). Key points should be short, memorable bullet points.`;
+Make sure each section has meaningful educational content. The content field should use Markdown formatting. Key points should be short, memorable bullet points.`;
 
         const result = await generateJSON(prompt, {
-            maxTokens: mode === "pro" ? 2000 : mode === "intermediate" ? 1000 : 500,
+            maxTokens: mode === "pro" ? 1500 : mode === "intermediate" ? 800 : 400,
         });
 
         // Ensure we have a valid sections array
@@ -75,52 +87,65 @@ Make sure each section has meaningful educational content. The content field sho
 // Generate comprehensive study material using parallel API calls per subtopic
 export async function generateComprehensiveMaterial(req, res) {
     try {
-        const { topic, subtopics = [], mode = "intermediate" } = req.body;
+        const { topic, subtopics = [], mode = "intermediate", syllabusId } = req.body;
+        const userId = req.user.userId;
 
         if (!topic) {
             return res.status(400).json({ error: "Topic is required" });
         }
 
-        // Keywords that indicate code-intensive topics - narrowed to avoid false positives in theoretical subjects
-        const codeKeywords = [
-            'programming', 'coding', 'source code', 'script', 'snippet', 'implementation',
-            'algorithm', 'data structure', 'software', 'developer', 'development',
-            'python', 'java', 'javascript', 'c++', 'c#', 'ruby', 'go', 'rust', 'swift', 'php',
-            'sql', 'nosql', 'database', 'query', 'schema',
-            'html', 'css', 'react', 'angular', 'vue', 'node', 'express', 'django', 'flask',
-            'api', 'rest', 'graphql', 'json', 'xml', 'yaml',
-            'function', 'class', 'object', 'variable', 'loop', 'recursion', 'array', 'list', 'tree', 'graph',
-            'git', 'terminal', 'shell', 'command', 'linux', 'bash'
-        ];
-
-        const isCodeIntensive = (topicName) => {
-            const lower = topicName.toLowerCase();
-            return codeKeywords.some(kw => lower.includes(kw));
-        };
-
         const topicsToGenerate = subtopics.length > 0 ? subtopics : [topic];
+
+        // Use AI to classify which subtopics are code-intensive (single batched call)
+        const classifyTopics = async (mainTopic, subtopicList) => {
+            const classificationPrompt = `You are a topic classifier. For each subtopic under the main topic "${mainTopic}", determine whether it is a programming/software topic that requires runnable code examples in its study material.
+
+Subtopics to classify:
+${JSON.stringify(subtopicList)}
+
+Return JSON: {"classifications": [{"subtopic": "exact subtopic name", "isCodeIntensive": true or false}]}
+
+Rules:
+- Mark "isCodeIntensive" as true ONLY if the subtopic is genuinely about software development, programming, or computer science concepts best taught with runnable code.
+- Topics from subjects like geography, political science, history, biology, economics, law, etc. are NEVER code intensive, even if they contain words like "functions", "tree", "graph", "loop", "class", "object", "go", "chain", or "web".
+- Consider the main topic "${mainTopic}" as context when deciding.`;
+
+            try {
+                const result = await generateJSON(classificationPrompt, { maxTokens: 50 + (subtopicList.length * 30) });
+                const map = {};
+                (result.classifications || []).forEach(c => {
+                    map[c.subtopic] = c.isCodeIntensive === true;
+                });
+                return map;
+            } catch (err) {
+                console.error("Topic classification failed, defaulting to non-code:", err.message);
+                const map = {};
+                subtopicList.forEach(s => { map[s] = false; });
+                return map;
+            }
+        };
 
         // Mode configurations with different token budgets and content depth
         const modeConfig = {
             short: {
-                words: "150",
-                conceptTokens: 600,
+                words: "150-250",
+                conceptTokens: 800,
                 codeTokens: 800,
                 codeExamples: 1,
                 includeAdvanced: false
             },
             intermediate: {
-                words: "300",
-                conceptTokens: 1000,
+                words: "400-600",
+                conceptTokens: 1500,
                 codeTokens: 1500,
                 codeExamples: 2,
                 includeAdvanced: false
             },
             pro: {
-                words: "500-600",
-                conceptTokens: 1800,
-                codeTokens: 2500,
-                advancedTokens: 1500,
+                words: "700-1000",
+                conceptTokens: 3000,
+                codeTokens: 3000,
+                advancedTokens: 3000,
                 codeExamples: 3,
                 includeAdvanced: true
             },
@@ -128,83 +153,183 @@ export async function generateComprehensiveMaterial(req, res) {
 
         const config = modeConfig[mode] || modeConfig.intermediate;
 
-        console.log(`Generating ${mode.toUpperCase()} material for "${topic}" with ${topicsToGenerate.length} subtopics`);
+        // Classify all subtopics in one batched AI call before generating content
+        const classificationMap = await classifyTopics(topic, topicsToGenerate);
 
-        const subtopicPromises = topicsToGenerate.map(async (subtopic, index) => {
-            const isCode = isCodeIntensive(subtopic) || isCodeIntensive(topic);
+        // Retrieve context using RAG
+        console.log(`[Comprehensive] Retrieving RAG context for topic: ${topic}`);
+        const chunks = await retrieveRelevantChunks(topic, { userId, syllabusId }, 8);
+        const scrapedContext = chunks.map((c, i) => `--- Textbook Excerpt ${i + 1} (from "${c.fileName}", ~p.${c.pageEstimate}, relevance: ${(c.score * 100).toFixed(1)}%) ---\n${c.text}`).join("\n\n");
+
+        // Build a reusable instruction block for all prompts
+        const contextInstruction = `
+Note: The material produced from this textbook context is very important for students, and it's very essential to generate coherent, high-quality, and well-formatted content.
+---START TEXTBOOK CONTEXT---
+${scrapedContext}
+---END TEXTBOOK CONTEXT---
+`;
+
+        console.log(`Generating ${mode.toUpperCase()} material for "${topic}" with ${topicsToGenerate.length} subtopics`);
+        console.log(`  Classification results:`, classificationMap);
+
+        // Execute subtopics sequentially with a 2-second delay to firmly avoid rate limit exhaustion
+        const subtopicResults = [];
+        for (let index = 0; index < topicsToGenerate.length; index++) {
+            const subtopic = topicsToGenerate[index];
+            const isCode = classificationMap[subtopic] === true;
 
             console.log(`  [${index + 1}/${topicsToGenerate.length}] "${subtopic}" - Code: ${isCode}, Mode: ${mode}`);
 
             if (isCode) {
                 // CONCEPT PROMPT - varies by mode
                 const conceptPrompt = mode === 'pro'
-                    ? `You are an expert educator. Provide a comprehensive, in-depth explanation of "${subtopic}" (topic: "${topic}").
+                    ? `You are a helpful educator. Provide a comprehensive explanation of "${subtopic}" (topic: "${topic}"). Make it a nice and well-formatted document for student preparation.
+Explain everything clearly and specifically.
 
-Write ${config.words} words covering:
+${contextInstruction}
+
+Write around ${config.words} words covering:
 1. What it is and why it matters
-2. How it works internally (step-by-step)
-3. When and where to use it
+2. How it works internally (detailed step-by-step logic)
+3. When, where, and why to use it
 4. Advantages and disadvantages
-5. Comparison with alternatives if applicable
+5. Detailed comparison with alternatives if applicable
+6. Crucial Mathematical or Technical Formulae MUST be included if relevant to the topic. Wrap block formulae in $$ ... $$ and inline formulae in $ ... $ for proper LaTeX rendering.
 
-Return JSON: {"title":"${subtopic}","overview":"3-4 sentence comprehensive intro","content":"Detailed multi-paragraph explanation","keyPoints":["detailed point 1","detailed point 2","detailed point 3","detailed point 4","detailed point 5"]}`
-                    : `Explain "${subtopic}" (topic: "${topic}") in about ${config.words} words.
+Requirements:
+- ABSOLUTELY NO EMOJIS. Maintain a highly professional and authentic academic tone.
+- Format the content strictly using rich Markdown (## for headers, * for lists, bolding for emphasis). Do NOT use raw HTML.
+- **CRITICAL**: To avoid JSON formatting errors, you MUST NOT use backslashes (\\) in your LaTeX or anywhere in the string values.
+- Instead, use the placeholder "|||" for every single backslash (e.g. use "|||frac{1}{2}" instead of "\\frac{1}{2}" or "\\\\frac{1}{2}", and "|||begin" instead of "\\begin").
 
-Return JSON: {"title":"${subtopic}","overview":"2 sentence intro","content":"Clear explanation of the concept","keyPoints":["point 1","point 2","point 3"]}`;
+Return JSON: {"title":"${subtopic}","overview":"3-4 sentence intro","content":"Well-formatted explanation in Markdown","keyPoints":["point 1","point 2","point 3","point 4","point 5"]}`
+                    : `Provide a clear explanation of "${subtopic}" (topic: "${topic}") in around ${config.words} words for student preparation. Make it a nice and well-formatted document.
+
+${contextInstruction}
+
+Requirements:
+- MUST include clear definitions.
+- MUST include a few practical examples.
+- IF it is a component: include "Advantages" and "Disadvantages" sections.
+- IF it is a process/working mechanism: include a "Working Process" section.
+- IF it is an algorithm: include "Method of implementation", "Advantages", "Disadvantages", "Input", and "Output" conceptual sections.
+- ABSOLUTELY NO EMOJIS. Maintain strictly professional and academic tone.
+- ENSURE depth of explanation is consistent and not rushed.
+- Format the content using rich Markdown (e.g. ### for headers, * for lists, bolding for key terms). DO NOT use raw HTML tags.
+
+Return JSON: {"title":"${subtopic}","overview":"2-3 sentence intro","content":"Well-formatted markdown explanation","keyPoints":["point 1","point 2","point 3"]}`;
 
                 // CODE PROMPT - more examples for Pro
                 const codePrompt = mode === 'pro'
-                    ? `Write ${config.codeExamples} complete Python code examples for "${subtopic}" with different use cases.
+                    ? `Write ${config.codeExamples} code examples for "${subtopic}" with varying complexities. Make them clear and well-formatted for students.
 
-Example 1: Basic implementation
-Example 2: Practical real-world usage  
+Example 1: Basic introductory implementation
+Example 2: Practical real-world usage
 Example 3: Advanced/optimized version
 
 Return JSON:
 {"codeExamples":[
-  {"title":"Example name","code":"# Full commented code\\n...","explanation":"Detailed step-by-step explanation of each part of the code"}
+  {"title":"Example name","code":"# clearly commented code\\n...","input":"Example input if applicable","output":"Exact output produced by the code","explanation":"Clear step-by-step logic explanation"}
 ]}
 
 Requirements:
-- Each example must be complete and runnable
-- Include detailed comments explaining each section
-- Explanations should walk through the code line-by-line`
-                    : `Write ${config.codeExamples} Python code examples for "${subtopic}".
+- Each example must be complete, runnable, and perfectly accurate.
+- Include an explicitly separated 'input' and 'output' string block in the JSON if relevant.
+- ABSOLUTELY NO EMOJIS. Professional academic tone only.
+- **CRITICAL**: To avoid JSON formatting errors, you MUST NOT use backslashes (\\) in your LaTeX or anywhere in the string values. Instead, use the placeholder "|||" for every single backslash (e.g. use "|||frac{1}{2}" instead of "\\frac{1}{2}").`
+                    : `Write ${config.codeExamples} clear code examples for "${subtopic}".
 
-Return JSON: {"codeExamples":[{"title":"name","code":"# code","explanation":"what it does"}]}
+Requirements:
+- The code MUST be clearly commented, explaining the logic.
+- Include a specific section for Input and Output. Output MUST be correct as per the code.
+- NO EMOJIS. Professional tone.
 
-Keep code complete but concise.`;
+Return JSON: {"codeExamples":[{"title":"name","code":"# clearly commented code","input":"Example input provided to the code","output":"Exact output produced by the code","explanation":"Clear explanation of the code logic"}]}`;
 
                 try {
-                    // Build array of promises based on mode
+                    // Define strict schema bounds to ensure AI doesn't return empty layout
+                    const conceptSchema = {
+                        type: "OBJECT",
+                        properties: {
+                            title: { type: "STRING" },
+                            overview: { type: "STRING" },
+                            content: { type: "STRING" },
+                            keyPoints: { type: "ARRAY", items: { type: "STRING" } }
+                        },
+                        required: ["title", "overview", "content", "keyPoints"]
+                    };
+
+                    const codeSchema = {
+                        type: "OBJECT",
+                        properties: {
+                            codeExamples: {
+                                type: "ARRAY",
+                                items: {
+                                    type: "OBJECT",
+                                    properties: {
+                                        title: { type: "STRING" },
+                                        code: { type: "STRING" },
+                                        input: { type: "STRING" },
+                                        output: { type: "STRING" },
+                                        explanation: { type: "STRING" }
+                                    },
+                                    required: ["title", "code"]
+                                }
+                            }
+                        },
+                        required: ["codeExamples"]
+                    };
+
+                    // Build array of promises based on mode for a single subtopic
                     const apiCalls = [
-                        generateJSON(conceptPrompt, { maxTokens: config.conceptTokens }),
-                        generateJSON(codePrompt, { maxTokens: config.codeTokens })
+                        generateJSON(conceptPrompt, { maxTokens: config.conceptTokens, schema: conceptSchema }),
+                        generateJSON(codePrompt, { maxTokens: config.codeTokens, schema: codeSchema })
                     ];
 
                     // PRO MODE: Add third API call for advanced content
                     if (config.includeAdvanced && mode === 'pro') {
-                        const advancedPrompt = `Provide advanced insights for "${subtopic}" (topic: "${topic}").
+                        const advancedPrompt = `Provide advanced professional insights for "${subtopic}" (topic: "${topic}").
 
-Cover these sections:
+Cover these exact sections in supreme detail:
 1. Common Mistakes & How to Avoid Them
 2. Best Practices & Design Patterns
 3. Performance Considerations & Optimizations
 4. Edge Cases to Handle
 5. Interview Tips (if applicable)
 
+Requirements:
+- ABSOLUTELY NO EMOJIS in any of the returned strings.
+
 Return JSON:
 {"advanced":{
-  "commonMistakes":["mistake 1 with explanation","mistake 2"],
+  "commonMistakes":["mistake 1 with detailed explanation","mistake 2"],
   "bestPractices":["practice 1","practice 2","practice 3"],
-  "performance":"Performance analysis and optimization tips",
+  "performance":"In-depth performance analysis and optimization tips",
   "edgeCases":["edge case 1","edge case 2"],
-  "tips":"Additional tips for mastery"
+  "tips":"Additional academic tips for absolute mastery"
 }}`;
-                        apiCalls.push(generateJSON(advancedPrompt, { maxTokens: config.advancedTokens }));
+
+                        const advancedSchema = {
+                            type: "OBJECT",
+                            properties: {
+                                advanced: {
+                                    type: "OBJECT",
+                                    properties: {
+                                        commonMistakes: { type: "ARRAY", items: { type: "STRING" } },
+                                        bestPractices: { type: "ARRAY", items: { type: "STRING" } },
+                                        performance: { type: "STRING" },
+                                        edgeCases: { type: "ARRAY", items: { type: "STRING" } },
+                                        tips: { type: "STRING" }
+                                    },
+                                    required: ["commonMistakes", "bestPractices"]
+                                }
+                            },
+                            required: ["advanced"]
+                        };
+                        apiCalls.push(generateJSON(advancedPrompt, { maxTokens: config.advancedTokens, schema: advancedSchema }));
                     }
 
-                    // Execute all API calls in parallel
+                    // Execute all API calls for THIS SUBTOPIC in parallel
                     const results = await Promise.all(apiCalls);
                     const conceptResult = results[0];
                     const codeResult = results[1];
@@ -220,6 +345,12 @@ Return JSON:
                             const title = ex.title || `Example ${i + 1}`;
                             fullContent += `### ${title}\n\n`;
                             fullContent += "```python\n" + (ex.code || "# Code here") + "\n```\n\n";
+                            if (ex.input) {
+                                fullContent += `**Input:**\n\`\`\`\n${ex.input}\n\`\`\`\n\n`;
+                            }
+                            if (ex.output) {
+                                fullContent += `**Output:**\n\`\`\`\n${ex.output}\n\`\`\`\n\n`;
+                            }
                             if (ex.explanation) {
                                 fullContent += `**Explanation:** ${ex.explanation}\n\n`;
                             }
@@ -233,7 +364,7 @@ Return JSON:
                         fullContent += "\n\n## Advanced Insights\n\n";
 
                         if (adv.commonMistakes && adv.commonMistakes.length > 0) {
-                            fullContent += "### ⚠️ Common Mistakes\n\n";
+                            fullContent += "### Common Mistakes\n\n";
                             adv.commonMistakes.forEach(m => {
                                 fullContent += `- ${m}\n`;
                             });
@@ -241,7 +372,7 @@ Return JSON:
                         }
 
                         if (adv.bestPractices && adv.bestPractices.length > 0) {
-                            fullContent += "### ✅ Best Practices\n\n";
+                            fullContent += "### Best Practices\n\n";
                             adv.bestPractices.forEach(p => {
                                 fullContent += `- ${p}\n`;
                             });
@@ -249,12 +380,12 @@ Return JSON:
                         }
 
                         if (adv.performance) {
-                            fullContent += "### ⚡ Performance Tips\n\n";
+                            fullContent += "### Performance Tips\n\n";
                             fullContent += adv.performance + "\n\n";
                         }
 
                         if (adv.edgeCases && adv.edgeCases.length > 0) {
-                            fullContent += "### 🔍 Edge Cases\n\n";
+                            fullContent += "### Edge Cases\n\n";
                             adv.edgeCases.forEach(e => {
                                 fullContent += `- ${e}\n`;
                             });
@@ -262,12 +393,12 @@ Return JSON:
                         }
 
                         if (adv.tips) {
-                            fullContent += "### 💡 Pro Tips\n\n";
+                            fullContent += "### Pro Tips\n\n";
                             fullContent += adv.tips + "\n";
                         }
                     }
 
-                    return {
+                    subtopicResults.push({
                         order: index,
                         subtopic,
                         title: conceptResult.title || subtopic,
@@ -277,10 +408,10 @@ Return JSON:
                         examples: codeResult.codeExamples?.map(ex => ex.title) || [],
                         isCodeIntensive: true,
                         success: true,
-                    };
+                    });
                 } catch (err) {
                     console.error(`Failed for "${subtopic}":`, err.message);
-                    return {
+                    subtopicResults.push({
                         order: index,
                         subtopic,
                         title: subtopic,
@@ -290,25 +421,56 @@ Return JSON:
                         examples: [],
                         isCodeIntensive: true,
                         success: false,
-                    };
+                    });
                 }
             } else {
                 // Non-code topics
                 const prompt = mode === 'pro'
-                    ? `Provide a comprehensive, in-depth explanation of "${subtopic}" (topic: "${topic}") in ${config.words} words.
+                    ? `You are a helpful educator. Provide a comprehensive explanation of "${subtopic}" (topic: "${topic}") in around ${config.words} words. Make it a nice and well-formatted document for student preparation.
+Explain everything clearly and specifically.
 
-Cover all aspects thoroughly with examples and practical applications.
+${contextInstruction}
 
-Return JSON: {"title":"${subtopic}","overview":"Comprehensive 3-4 sentence intro","content":"Detailed multi-paragraph explanation covering all aspects","keyPoints":["detailed point 1","detailed point 2","detailed point 3","detailed point 4","detailed point 5"],"examples":["detailed example 1","detailed example 2","detailed example 3"]}`
-                    : `Explain "${subtopic}" (topic: "${topic}") in ${config.words} words.
+Cover all aspects with clear practical examples.
+Crucial Mathematical or Technical Formulae MUST be included if relevant to the topic. Wrap block formulae in $$ ... $$ and inline formulae in $ ... $ for proper LaTeX rendering.
 
-Requirement: Focus on conceptual clarity. If the topic is technical, you may include code snippets if relevant, otherwise focus on descriptive examples.
+Requirements:
+- ABSOLUTELY NO EMOJIS. Maintain a highly professional and authentic academic tone.
+- Format the content strictly using rich Markdown (## for headers, * for lists, bolding for emphasis). Do NOT use raw HTML.
+- **CRITICAL**: To avoid JSON formatting errors, you MUST NOT use backslashes (\\) in your LaTeX or anywhere in the string values.
+- Instead, use the placeholder "|||" for every single backslash (e.g. use "|||frac{1}{2}" instead of "\\frac{1}{2}" or "\\\\frac{1}{2}", and "|||begin" instead of "\\begin").
 
-Return JSON: {"title":"${subtopic}","overview":"2-sentence intro","content":"Explanation","keyPoints":["p1","p2","p3"],"examples":["ex1","ex2"]}`;
+Return JSON: {"title":"${subtopic}","overview":"3-4 sentence intro","content":"Well-formatted explanation in Markdown","keyPoints":["point 1","point 2","point 3","point 4","point 5"],"examples":["example 1","example 2","example 3"]}`
+                    : `Provide a clear explanation of "${subtopic}" (topic: "${topic}") in around ${config.words} words for student preparation. Make it a nice and well-formatted document.
+
+${contextInstruction}
+
+Requirements:
+- MUST include clear definitions.
+- MUST include a few practical examples.
+- IF it is a component: include "Advantages" and "Disadvantages" sections.
+- IF it is a process/working mechanism: include "Working Process" section.
+- ABSOLUTELY NO EMOJIS. Maintain strictly professional and academic tone.
+- ENSURE depth of explanation is consistent and not arbitrarily shortened.
+- Format the content using rich Markdown (e.g. ### for headers, * for bullets, bolding for emphasis). DO NOT use raw HTML.
+
+Return JSON: {"title":"${subtopic}","overview":"2-3 sentence intro","content":"Well-formatted markdown explanation","keyPoints":["p1","p2","p3"],"examples":["ex1","ex2"]}`;
 
                 try {
-                    const result = await generateJSON(prompt, { maxTokens: config.conceptTokens });
-                    return {
+                    const noCodeSchema = {
+                        type: "OBJECT",
+                        properties: {
+                            title: { type: "STRING" },
+                            overview: { type: "STRING" },
+                            content: { type: "STRING" },
+                            keyPoints: { type: "ARRAY", items: { type: "STRING" } },
+                            examples: { type: "ARRAY", items: { type: "STRING" } }
+                        },
+                        required: ["title", "overview", "content", "keyPoints", "examples"]
+                    };
+
+                    const result = await generateJSON(prompt, { maxTokens: config.conceptTokens, schema: noCodeSchema });
+                    subtopicResults.push({
                         order: index,
                         subtopic,
                         title: result.title || subtopic,
@@ -318,10 +480,10 @@ Return JSON: {"title":"${subtopic}","overview":"2-sentence intro","content":"Exp
                         examples: result.examples || [],
                         isCodeIntensive: false,
                         success: true,
-                    };
+                    });
                 } catch (err) {
                     console.error(`Failed for "${subtopic}":`, err.message);
-                    return {
+                    subtopicResults.push({
                         order: index,
                         subtopic,
                         title: subtopic,
@@ -331,12 +493,15 @@ Return JSON: {"title":"${subtopic}","overview":"2-sentence intro","content":"Exp
                         examples: [],
                         isCodeIntensive: false,
                         success: false,
-                    };
+                    });
                 }
             }
-        });
 
-        const subtopicResults = await Promise.all(subtopicPromises);
+            // Optional: small delay to avoid blitzing the API if there are many topics
+            if (index < topicsToGenerate.length - 1) {
+                await new Promise(res => setTimeout(res, 2000));
+            }
+        }
         subtopicResults.sort((a, b) => a.order - b.order);
 
         const sections = subtopicResults.map(r => ({
@@ -348,7 +513,7 @@ Return JSON: {"title":"${subtopic}","overview":"2-sentence intro","content":"Exp
             isCodeIntensive: r.isCodeIntensive,
         }));
 
-        const fullContent = sections.map(s => `${s.overview}\n\n${s.content}`).join('\n\n');
+        const fullContent = sections.filter(s => s.overview || s.content).map(s => `${s.overview || ""}\n\n${s.content || ""}`).join('\n\n');
         const successCount = subtopicResults.filter(r => r.success).length;
         const codeTopicsCount = subtopicResults.filter(r => r.isCodeIntensive).length;
 

@@ -54,8 +54,8 @@ export async function updateUserAnalytics(userId, result) {
             await updateTopicAnalytics(analytics, result.topicPerformance);
         }
 
-        // Update streaks
-        await updateStreaks(analytics);
+        // Update practice streaks only
+        await updatePracticeStreaks(analytics);
 
         // Add to progress history
         const today = new Date().toISOString().split("T")[0];
@@ -123,7 +123,7 @@ async function updateTopicAnalytics(analytics, topicPerformance) {
             topicMap[tp.topic] = {
                 accuracy: tp.accuracy,
                 questionsAttempted: tp.attempted,
-                isWeak: tp.accuracy < 60,
+                isWeak: tp.accuracy < 50,
             };
         } else {
             // Running average
@@ -135,7 +135,7 @@ async function updateTopicAnalytics(analytics, topicPerformance) {
             topicMap[tp.topic] = {
                 accuracy: Math.round((totalCorrect / totalAttempted) * 100),
                 questionsAttempted: totalAttempted,
-                isWeak: Math.round((totalCorrect / totalAttempted) * 100) < 60,
+                isWeak: Math.round((totalCorrect / totalAttempted) * 100) < 50,
             };
         }
     });
@@ -148,7 +148,7 @@ async function updateTopicAnalytics(analytics, topicPerformance) {
         if (data.isWeak) {
             let improvementNeeded = "low";
             if (data.accuracy < 40) improvementNeeded = "high";
-            else if (data.accuracy < 60) improvementNeeded = "medium";
+            else if (data.accuracy < 50) improvementNeeded = "medium";
 
             weakTopics.push({
                 topic,
@@ -171,10 +171,13 @@ async function updateTopicAnalytics(analytics, topicPerformance) {
     analytics.strongTopics = strongTopics.sort((a, b) => b.accuracy - a.accuracy);
 }
 
-// Update user streaks
-async function updateStreaks(analytics) {
+// Update practice streaks
+async function updatePracticeStreaks(analytics) {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
+
+    // Legacy support for older analytics documents
+    if (!analytics.streaks) analytics.streaks = { current: 0, longest: 0, lastActiveDate: null };
 
     const lastActive = analytics.streaks.lastActiveDate;
 
@@ -203,6 +206,48 @@ async function updateStreaks(analytics) {
     analytics.streaks.lastActiveDate = today;
 }
 
+// Update login / visiting streaks
+export async function updateLoginStreaks(analytics) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // Ensure loginStreaks structure exists
+    if (!analytics.loginStreaks) analytics.loginStreaks = { current: 0, longest: 0, lastActiveDate: null };
+
+    const lastActive = analytics.loginStreaks.lastActiveDate;
+    let modified = false;
+
+    if (lastActive) {
+        const lastActiveDate = new Date(lastActive);
+        lastActiveDate.setHours(0, 0, 0, 0);
+
+        const diffDays = Math.floor((today - lastActiveDate) / (1000 * 60 * 60 * 24));
+
+        if (diffDays === 0) {
+            // Same day, no change
+        } else if (diffDays === 1) {
+            // Consecutive day
+            analytics.loginStreaks.current += 1;
+            if (analytics.loginStreaks.current > analytics.loginStreaks.longest) {
+                analytics.loginStreaks.longest = analytics.loginStreaks.current;
+            }
+            analytics.loginStreaks.lastActiveDate = today;
+            modified = true;
+        } else {
+            // Streak broken
+            analytics.loginStreaks.current = 1;
+            analytics.loginStreaks.lastActiveDate = today;
+            modified = true;
+        }
+    } else {
+        analytics.loginStreaks.current = 1;
+        analytics.loginStreaks.lastActiveDate = today;
+        modified = true;
+    }
+
+    return modified;
+}
+
 // Get detailed analytics for a user
 export async function getDetailedAnalytics(userId) {
     const analytics = await Analytics.findOne({ userId });
@@ -217,8 +262,9 @@ export async function getDetailedAnalytics(userId) {
             totalQuestions: analytics.totalQuestionsAttempted,
             overallAccuracy: analytics.overallAccuracy,
             avgTimePerQuestion: analytics.avgTimePerQuestion,
-            currentStreak: analytics.streaks.current,
-            longestStreak: analytics.streaks.longest,
+            currentStreak: analytics.streaks?.current || 0,
+            longestStreak: analytics.streaks?.longest || 0,
+            visitingStreak: analytics.loginStreaks?.current || 0,
         },
         weakAreas: analytics.weakTopics.slice(0, 5),
         strengths: analytics.strongTopics.slice(0, 5),
