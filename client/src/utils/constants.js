@@ -47,6 +47,7 @@ export const ROUTES = {
         DASHBOARD: "/student/dashboard",
         SYLLABI: "/student/syllabi",
         UPLOAD_SYLLABUS: "/student/upload-syllabus",
+        MATERIAL_LOAD: "/student/material-load",
         STUDY_MATERIAL: "/student/study-material",
         SAVED_MATERIALS: "/student/saved-materials",
         PRACTICE: "/student/practice",
@@ -66,6 +67,7 @@ export const ROUTES = {
 // Navigation items for student
 export const STUDENT_NAV_ITEMS = [
     { label: "Dashboard", path: ROUTES.STUDENT.DASHBOARD, icon: "dashboard" },
+    { label: "Material Load", path: ROUTES.STUDENT.MATERIAL_LOAD, icon: "upload" },
     { label: "Study Material", path: ROUTES.STUDENT.STUDY_MATERIAL, icon: "book" },
     { label: "Saved Materials", path: ROUTES.STUDENT.SAVED_MATERIALS, icon: "folder" },
     { label: "Practice", path: ROUTES.STUDENT.PRACTICE, icon: "pencil" },

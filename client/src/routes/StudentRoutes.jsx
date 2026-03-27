@@ -3,6 +3,7 @@ import StudentHome from "../pages/StudentHome";
 import Dashboard from "../components/student/Dashboard";
 import SyllabusManager from "../components/student/SyllabusManager";
 import UploadSyllabus from "../components/student/UploadSyllabus";
+import MaterialLoad from "../components/student/MaterialLoad";
 
 import StudyMaterial from "../components/student/StudyMaterial";
 import SavedMaterials from "../components/student/SavedMaterials";
@@ -47,6 +48,7 @@ export default function StudentRoutes() {
                 <Route path="profile" element={<Profile />} />
                 <Route path="syllabi" element={<SyllabusManager />} />
                 <Route path="upload-syllabus" element={<UploadSyllabus />} />
+                <Route path="material-load" element={<MaterialLoad />} />
                 <Route path="study-material" element={<StudyMaterial />} />
                 <Route path="saved-materials" element={<SavedMaterials />} />
                 <Route path="practice" element={<PracticeSession />} />

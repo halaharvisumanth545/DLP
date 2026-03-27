@@ -85,6 +85,10 @@ export const endpoints = {
         analyzeWeakness: "/api/openai/analyze-weakness",
     },
 
+    materialLoad: {
+        ingestGoogleDoc: "/api/material-load/ingest-google-doc",
+    },
+
     // RAG (Textbook-Augmented Generation) — detached
     // rag: {
     //     uploadTextbook: "/api/rag/upload-textbook",

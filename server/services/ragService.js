@@ -4,6 +4,7 @@ import { tmpdir } from "os";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 
+import axios from "axios";
 import OpenAI from "openai";
 import { Pinecone } from "@pinecone-database/pinecone";
 import { Textbook } from "../models/Textbook.js";
@@ -29,11 +30,193 @@ const EMBEDDING_DIM = Number(process.env.OPENAI_EMBED_DIM || 1536);
 const CHUNK_SIZE = 700;
 const CHUNK_OVERLAP = 80;
 const CHAR_PER_TOKEN = 4;
+const RERANKER_URL = process.env.RERANKER_URL || "http://127.0.0.1:8091/rerank";
+const RERANKER_ENABLED = process.env.RERANKER_ENABLED !== "false";
+const RERANKER_TIMEOUT_MS = Number(process.env.RERANKER_TIMEOUT_MS || 15000);
+const RERANKER_CANDIDATE_LIMIT = Number(process.env.RERANKER_CANDIDATE_LIMIT || 24);
+const ADAPTIVE_TOPK_ENABLED = process.env.ADAPTIVE_TOPK_ENABLED !== "false";
+const ADAPTIVE_TOPK_MIN = Number(process.env.ADAPTIVE_TOPK_MIN || 3);
+const ADAPTIVE_TOPK_MAX = Number(process.env.ADAPTIVE_TOPK_MAX || 8);
+const ADAPTIVE_TOPK_ABS_THRESHOLD = Number(process.env.ADAPTIVE_TOPK_ABS_THRESHOLD || 0.55);
+const ADAPTIVE_TOPK_REL_THRESHOLD = Number(process.env.ADAPTIVE_TOPK_REL_THRESHOLD || 0.7);
+const ADAPTIVE_TOPK_MAX_SCORE_DROP = Number(process.env.ADAPTIVE_TOPK_MAX_SCORE_DROP || 0.18);
 
 function extractErrorMessage(error) {
     if (!error) return "Unknown error";
     if (typeof error.message === "string" && error.message.trim()) return error.message;
     return String(error);
+}
+
+function normalizeChunkResult(result, reranked) {
+    reranked = reranked || {};
+
+    return {
+        text: result.text || "",
+        score: typeof reranked.normalized_score === "number" ? reranked.normalized_score : result.score,
+        retrievalScore: result.score,
+        rerankScore: typeof reranked.score === "number" ? reranked.score : null,
+        fileName: result.fileName || result.documentTitle || "Imported Material",
+        documentTitle: result.documentTitle || result.fileName || "Imported Material",
+        sourceUrl: result.sourceUrl || "",
+        pageEstimate: result.pageEstimate,
+        textbookId: result.textbookId,
+        documentId: result.documentId,
+        chunkIndex: result.chunkIndex,
+        clusterId: result.clusterId || "",
+        clusterLabel: result.clusterLabel || "",
+        sectionTitle: result.sectionTitle || "",
+        sectionPath: result.sectionPath || "",
+    };
+}
+
+function applyClusterDiversity(results, requestedTopK) {
+    if (!Array.isArray(results) || results.length === 0) {
+        return [];
+    }
+
+    var maxPerCluster = Number(process.env.RAG_CLUSTER_MAX_PER_CLUSTER || 2);
+    var selected = [];
+    var countsByCluster = {};
+
+    for (var i = 0; i < results.length && selected.length < requestedTopK; i++) {
+        var item = results[i];
+        var clusterKey = item.clusterId
+            || (item.documentId ? String(item.documentId) + ":" + String(item.chunkIndex) : "")
+            || (item.textbookId ? String(item.textbookId) + ":" + String(item.chunkIndex) : "")
+            || String(i);
+
+        if ((countsByCluster[clusterKey] || 0) >= maxPerCluster) {
+            continue;
+        }
+
+        countsByCluster[clusterKey] = (countsByCluster[clusterKey] || 0) + 1;
+        selected.push(item);
+    }
+
+    if (selected.length >= requestedTopK) {
+        return selected;
+    }
+
+    for (var ri = 0; ri < results.length && selected.length < requestedTopK; ri++) {
+        if (!selected.includes(results[ri])) {
+            selected.push(results[ri]);
+        }
+    }
+
+    return selected;
+}
+
+async function rerankChunks(query, candidates, topK) {
+    if (!RERANKER_ENABLED || !RERANKER_URL || !Array.isArray(candidates) || candidates.length === 0) {
+        return null;
+    }
+
+    try {
+        var payload = {
+            query: query,
+            top_n: Math.min(topK, candidates.length),
+            candidates: candidates.map(function (candidate, index) {
+                return {
+                    id: candidate.textbookId
+                        ? String(candidate.textbookId) + ":" + String(candidate.chunkIndex)
+                        : (candidate.documentId ? String(candidate.documentId) + ":" + String(candidate.chunkIndex) : String(index)),
+                    text: candidate.text,
+                    metadata: {
+                        fileName: candidate.fileName,
+                        documentTitle: candidate.documentTitle,
+                        sourceUrl: candidate.sourceUrl,
+                        pageEstimate: candidate.pageEstimate,
+                        textbookId: candidate.textbookId,
+                        documentId: candidate.documentId,
+                        chunkIndex: candidate.chunkIndex,
+                    },
+                };
+            }),
+        };
+
+        var response = await axios.post(RERANKER_URL, payload, {
+            timeout: RERANKER_TIMEOUT_MS,
+            headers: {
+                "Content-Type": "application/json",
+            },
+        });
+
+        if (!response.data || !Array.isArray(response.data.results)) {
+            throw new Error("Reranker response did not include a results array.");
+        }
+
+        return response.data.results;
+    } catch (error) {
+        console.warn("[RAG] Reranker unavailable, falling back to Pinecone ranking:", extractErrorMessage(error));
+        return null;
+    }
+}
+
+function selectAdaptiveTopK(results, requestedTopK, options) {
+    options = options || {};
+
+    if (!ADAPTIVE_TOPK_ENABLED || !Array.isArray(results) || results.length === 0) {
+        return {
+            selected: Array.isArray(results) ? results.slice(0, requestedTopK) : [],
+            reason: "disabled",
+            selectedK: Math.min(requestedTopK, Array.isArray(results) ? results.length : 0),
+        };
+    }
+
+    var maxK = Math.min(
+        options.maxK || ADAPTIVE_TOPK_MAX,
+        requestedTopK,
+        results.length
+    );
+    var minK = Math.min(options.minK || ADAPTIVE_TOPK_MIN, maxK);
+    var absThreshold = options.absoluteThreshold || ADAPTIVE_TOPK_ABS_THRESHOLD;
+    var relThreshold = options.relativeThreshold || ADAPTIVE_TOPK_REL_THRESHOLD;
+    var maxScoreDrop = options.maxScoreDrop || ADAPTIVE_TOPK_MAX_SCORE_DROP;
+    var bestScore = typeof results[0].score === "number" ? results[0].score : 0;
+    var selected = [];
+    var stopReason = "exhausted";
+
+    for (var i = 0; i < results.length && selected.length < maxK; i++) {
+        var item = results[i];
+        var currentScore = typeof item.score === "number" ? item.score : 0;
+        var previousScore = i > 0 && typeof results[i - 1].score === "number" ? results[i - 1].score : currentScore;
+        var scoreDrop = previousScore - currentScore;
+        var belowAbsoluteThreshold = currentScore < absThreshold;
+        var belowRelativeThreshold = bestScore > 0 ? currentScore < (bestScore * relThreshold) : false;
+        var excessiveScoreDrop = i > 0 ? scoreDrop > maxScoreDrop : false;
+
+        if (selected.length < minK) {
+            selected.push(item);
+            continue;
+        }
+
+        if (belowAbsoluteThreshold) {
+            stopReason = "absolute_threshold";
+            break;
+        }
+
+        if (belowRelativeThreshold) {
+            stopReason = "relative_threshold";
+            break;
+        }
+
+        if (excessiveScoreDrop) {
+            stopReason = "score_drop";
+            break;
+        }
+
+        selected.push(item);
+    }
+
+    if (selected.length >= maxK) {
+        stopReason = "max_k";
+    }
+
+    return {
+        selected: selected,
+        reason: stopReason,
+        selectedK: selected.length,
+    };
 }
 
 function ensureEmbeddingClient() {
@@ -313,6 +496,10 @@ export async function retrieveRelevantChunks(query, filter, topK, options) {
     options = options || {};
 
     var failSilently = options.failSilently === true;
+    var candidateLimit = options.candidateLimit || Math.max(
+        topK,
+        Math.min(Math.max(topK * 4, topK + 6), RERANKER_CANDIDATE_LIMIT)
+    );
 
     try {
         console.log("[RAG] Embedding query with OpenAI " + EMBEDDING_MODEL + ": \"" + query.substring(0, 80) + "...\"");
@@ -322,6 +509,7 @@ export async function retrieveRelevantChunks(query, filter, topK, options) {
         if (filter.userId) pineconeFilter.userId = filter.userId;
         if (filter.textbookId) pineconeFilter.textbookId = filter.textbookId;
         if (filter.syllabusId) pineconeFilter.syllabusId = filter.syllabusId;
+        if (filter.clusterId) pineconeFilter.clusterId = filter.clusterId;
 
         var index = await getPineconeIndex();
         var hasFilter = Object.keys(pineconeFilter).length > 0;
@@ -330,7 +518,7 @@ export async function retrieveRelevantChunks(query, filter, topK, options) {
 
         var queryResult = await index.query({
             vector: queryEmbedding,
-            topK: topK,
+            topK: candidateLimit,
             includeMetadata: true,
             filter: hasFilter ? pineconeFilter : undefined,
         });
@@ -341,7 +529,7 @@ export async function retrieveRelevantChunks(query, filter, topK, options) {
             console.log("[RAG] No results with filters, retrying without filters...");
             queryResult = await index.query({
                 vector: queryEmbedding,
-                topK: topK,
+                topK: candidateLimit,
                 includeMetadata: true,
             });
         }
@@ -355,15 +543,54 @@ export async function retrieveRelevantChunks(query, filter, topK, options) {
             return {
                 text: match.metadata.text || "",
                 score: match.score,
-                fileName: match.metadata.fileName,
+                fileName: match.metadata.fileName || match.metadata.documentTitle || "Imported Material",
+                documentTitle: match.metadata.documentTitle || match.metadata.fileName || "Imported Material",
+                sourceUrl: match.metadata.sourceUrl || "",
                 pageEstimate: match.metadata.pageEstimate,
                 textbookId: match.metadata.textbookId,
+                documentId: match.metadata.documentId,
                 chunkIndex: match.metadata.chunkIndex,
+                clusterId: match.metadata.clusterId,
+                clusterLabel: match.metadata.clusterLabel,
+                sectionTitle: match.metadata.sectionTitle,
+                sectionPath: match.metadata.sectionPath,
             };
         });
 
-        console.log("[RAG] Retrieved " + results.length + " chunks (best: " + (results[0].score || 0).toFixed(4) + ")");
-        return results;
+        var rerankedResults = await rerankChunks(query, results, topK);
+        if (rerankedResults && rerankedResults.length > 0) {
+            var byChunkId = new Map();
+            for (var ri = 0; ri < results.length; ri++) {
+                var candidateId = results[ri].textbookId
+                    ? String(results[ri].textbookId) + ":" + String(results[ri].chunkIndex)
+                    : (results[ri].documentId ? String(results[ri].documentId) + ":" + String(results[ri].chunkIndex) : String(ri));
+                byChunkId.set(candidateId, results[ri]);
+            }
+
+            var merged = rerankedResults.map(function (item) {
+                var original = byChunkId.get(item.id);
+                if (!original && typeof item.original_index === "number") {
+                    original = results[item.original_index];
+                }
+                return original ? normalizeChunkResult(original, item) : null;
+            }).filter(Boolean);
+            var adaptiveSelection = selectAdaptiveTopK(merged, topK, options.adaptiveTopK);
+
+            console.log(
+                "[RAG] Retrieved " + adaptiveSelection.selected.length +
+                " reranked chunks via adaptive top-k (requested: " + topK +
+                ", candidates: " + merged.length +
+                ", best rerank score: " + ((merged[0]?.rerankScore ?? 0).toFixed(4)) +
+                ", stop: " + adaptiveSelection.reason + ")"
+            );
+            return applyClusterDiversity(adaptiveSelection.selected, topK);
+        }
+
+        var baseline = results.slice(0, topK).map(function (item) {
+            return normalizeChunkResult(item);
+        });
+        console.log("[RAG] Retrieved " + baseline.length + " Pinecone-ranked chunks (best: " + (baseline[0]?.retrievalScore || 0).toFixed(4) + ")");
+        return applyClusterDiversity(baseline, topK);
     } catch (error) {
         if (failSilently) {
             console.warn("[RAG] Retrieval unavailable, continuing without textbook context:", extractErrorMessage(error));

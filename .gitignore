@@ -5,3 +5,11 @@ server/.env
 client/.env
 env
 env/
+dlpmaterialgeneration-0fecad394f2d.json
+.venv/
+.venv-reranker/
+server/node_modules/
+client/node_modules/
+client/dist/
+__pycache__/
+*.pyc
