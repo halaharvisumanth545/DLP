@@ -1,8 +1,62 @@
 import { Syllabus } from "../models/Syllabus.js";
 import { StudyMaterial } from "../models/StudyMaterial.js";
+import { StudyMaterialChatSession } from "../models/StudyMaterialChatSession.js";
 import { extractTopics } from "../utils/topicExtractor.js";
 import { generateStudyContent } from "../services/openaiService.js";
 import { extractTextFromPDF } from "../utils/pdfParser.js";
+import { answerStudyMaterialQuery } from "../services/studyMaterialChatService.js";
+
+function formatChatSessionSummary(session) {
+    return {
+        id: session._id,
+        title: session.title,
+        topic: session.topic,
+        createdAt: session.createdAt,
+        lastActivityAt: session.lastActivityAt,
+        messageCount: Array.isArray(session.messages) ? session.messages.length : 0,
+    };
+}
+
+function formatChatSessionDetail(session) {
+    return {
+        ...formatChatSessionSummary(session),
+        messages: (session.messages || []).map((message) => ({
+            id: message._id,
+            role: message.role,
+            text: message.text,
+            sources: message.sources || [],
+            inScope: message.inScope !== false,
+            createdAt: message.createdAt,
+        })),
+    };
+}
+
+async function loadOwnedStudyMaterial(materialId, userId) {
+    const material = await StudyMaterial.findOne({
+        _id: materialId,
+        userId,
+    });
+
+    if (!material) {
+        throw new Error("Study material not found.");
+    }
+
+    return material;
+}
+
+async function loadOwnedChatSession({ sessionId, materialId, userId }) {
+    const session = await StudyMaterialChatSession.findOne({
+        _id: sessionId,
+        materialId,
+        userId,
+    });
+
+    if (!session) {
+        throw new Error("Chat session not found.");
+    }
+
+    return session;
+}
 
 // Upload and parse syllabus
 export async function uploadSyllabus(req, res) {
@@ -166,6 +220,147 @@ export async function getStudyMaterialById(req, res) {
     } catch (error) {
         console.error("Get study material error:", error);
         res.status(500).json({ error: "Failed to get study material" });
+    }
+}
+
+export async function chatWithStudyMaterial(req, res) {
+    try {
+        const { query } = req.body || {};
+        const userId = req.user.userId;
+        const material = await loadOwnedStudyMaterial(req.params.id, userId);
+        const session = await loadOwnedChatSession({
+            sessionId: req.params.sessionId,
+            materialId: material._id,
+            userId,
+        });
+
+        if (typeof query !== "string" || query.trim().length === 0) {
+            return res.status(400).json({ error: "A query is required." });
+        }
+
+        const trimmedQuery = query.trim();
+        const userMessage = {
+            role: "user",
+            text: trimmedQuery,
+            sources: [],
+            inScope: true,
+            createdAt: new Date(),
+        };
+
+        const reply = await answerStudyMaterialQuery({
+            materialId: material._id,
+            userId,
+            query: trimmedQuery,
+            history: session.messages,
+        });
+
+        const assistantMessage = {
+            role: "assistant",
+            text: reply.answer,
+            sources: reply.sources || [],
+            inScope: reply.inScope !== false,
+            createdAt: new Date(),
+        };
+
+        session.messages.push(userMessage, assistantMessage);
+        session.lastActivityAt = new Date();
+        if (!session.title || session.title === "New chat") {
+            session.title = trimmedQuery.length > 48 ? `${trimmedQuery.slice(0, 48).trim()}...` : trimmedQuery;
+        }
+        await session.save();
+
+        res.json({
+            session: formatChatSessionDetail(session),
+            message: reply.answer,
+            inScope: reply.inScope,
+            sources: reply.sources,
+        });
+    } catch (error) {
+        console.error("Study material chat error:", error);
+        const status = error.message === "Study material not found." || error.message === "Chat session not found." ? 404 : 500;
+        res.status(status).json({
+            error: status === 404 ? error.message : "Failed to process the study material query.",
+        });
+    }
+}
+
+export async function createStudyMaterialChatSession(req, res) {
+    try {
+        const userId = req.user.userId;
+        const material = await loadOwnedStudyMaterial(req.params.id, userId);
+
+        const session = await StudyMaterialChatSession.create({
+            userId,
+            materialId: material._id,
+            syllabusId: material.syllabusId,
+            topic: material.topic,
+            title: "New chat",
+            messages: [
+                {
+                    role: "assistant",
+                    text: `Ask me anything about ${material.topic}. I will answer from the study material for this topic.`,
+                    sources: [],
+                    inScope: true,
+                },
+            ],
+            lastActivityAt: new Date(),
+        });
+
+        res.status(201).json({
+            session: formatChatSessionDetail(session),
+        });
+    } catch (error) {
+        console.error("Create study material chat session error:", error);
+        const status = error.message === "Study material not found." ? 404 : 500;
+        res.status(status).json({
+            error: status === 404 ? error.message : "Failed to create the chat session.",
+        });
+    }
+}
+
+export async function listStudyMaterialChatSessions(req, res) {
+    try {
+        const userId = req.user.userId;
+        const material = await loadOwnedStudyMaterial(req.params.id, userId);
+
+        const sessions = await StudyMaterialChatSession.find({
+            userId,
+            materialId: material._id,
+        })
+            .sort({ lastActivityAt: -1, createdAt: -1 })
+            .select("title topic messages createdAt lastActivityAt");
+
+        res.json({
+            sessions: sessions.map(formatChatSessionSummary),
+        });
+    } catch (error) {
+        console.error("List study material chat sessions error:", error);
+        const status = error.message === "Study material not found." ? 404 : 500;
+        res.status(status).json({
+            error: status === 404 ? error.message : "Failed to load chat history.",
+        });
+    }
+}
+
+export async function getStudyMaterialChatSession(req, res) {
+    try {
+        const userId = req.user.userId;
+        const material = await loadOwnedStudyMaterial(req.params.id, userId);
+        const session = await loadOwnedChatSession({
+            sessionId: req.params.sessionId,
+            materialId: material._id,
+            userId,
+        });
+
+        res.json({
+            session: formatChatSessionDetail(session),
+        });
+    } catch (error) {
+        console.error("Get study material chat session error:", error);
+        const status = error.message === "Study material not found." || error.message === "Chat session not found." ? 404 : 500;
+        res.status(status).json({
+            error: status === 404 ? error.message : "Failed to load the chat session.",
+        });
     }
 }
 

@@ -3252,7 +3252,7 @@
     padding: 4px;
     border-radius: 6px;
     transition: all 0.2s;
-    margin-top: 5px;
+    transform: translateY(-2px);
 }
 
 .back-chevron:hover {

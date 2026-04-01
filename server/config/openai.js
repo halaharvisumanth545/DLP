@@ -9,6 +9,45 @@ const openaiClient = OPENAI_API_KEY
     ? new OpenAI({ apiKey: OPENAI_API_KEY })
     : null;
 
+export async function generateTextReply(input, options = {}) {
+    const {
+        systemPrompt = "You are a helpful academic assistant.",
+        model,
+        maxTokens = 600,
+        temperature = 0.2,
+        fallbackText = "I could not generate a response at this time.",
+    } = options;
+
+    if (!openaiClient) {
+        return fallbackText;
+    }
+
+    const messages = [
+        { role: "system", content: systemPrompt },
+    ];
+
+    if (Array.isArray(input)) {
+        messages.push(...input);
+    } else {
+        messages.push({ role: "user", content: String(input || "") });
+    }
+
+    try {
+        const response = await openaiClient.chat.completions.create({
+            model: model || DEFAULT_OPENAI_MODEL,
+            messages,
+            max_tokens: maxTokens,
+            temperature,
+        });
+
+        const content = response.choices?.[0]?.message?.content?.trim();
+        return content || fallbackText;
+    } catch (error) {
+        console.warn(`[AI] Text reply generation failed for ${model || DEFAULT_OPENAI_MODEL}: ${error.message}`);
+        return fallbackText;
+    }
+}
+
 export async function generateCompletion(prompt, options = {}) {
     const {
         model,

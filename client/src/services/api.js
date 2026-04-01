@@ -56,6 +56,7 @@ export const endpoints = {
         syllabi: "/api/student/syllabi",
         uploadSyllabus: "/api/student/syllabi",
         materials: "/api/student/study-materials",
+        materialChatSessions: "/api/student/study-materials",
         generateMaterial: "/api/student/study-materials/generate",
         saveMaterial: "/api/student/study-materials/save",
         combineMaterials: "/api/student/study-materials/combine",

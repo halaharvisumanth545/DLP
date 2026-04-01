@@ -509,7 +509,11 @@ export async function retrieveRelevantChunks(query, filter, topK, options) {
         if (filter.userId) pineconeFilter.userId = filter.userId;
         if (filter.textbookId) pineconeFilter.textbookId = filter.textbookId;
         if (filter.syllabusId) pineconeFilter.syllabusId = filter.syllabusId;
-        if (filter.clusterId) pineconeFilter.clusterId = filter.clusterId;
+        if (Array.isArray(filter.clusterIds) && filter.clusterIds.length > 0) {
+            pineconeFilter.clusterId = { $in: filter.clusterIds };
+        } else if (filter.clusterId) {
+            pineconeFilter.clusterId = filter.clusterId;
+        }
 
         var index = await getPineconeIndex();
         var hasFilter = Object.keys(pineconeFilter).length > 0;

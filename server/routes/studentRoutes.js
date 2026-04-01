@@ -12,6 +12,10 @@ import {
     generateStudyMaterial,
     getStudyMaterials,
     getStudyMaterialById,
+    createStudyMaterialChatSession,
+    listStudyMaterialChatSessions,
+    getStudyMaterialChatSession,
+    chatWithStudyMaterial,
     deleteSyllabus,
     saveStudyMaterial,
     getAllStudyMaterials,
@@ -53,6 +57,10 @@ router.delete("/syllabi/:id", deleteSyllabus);
 router.post("/study-materials/generate", generateStudyMaterial);
 router.post("/study-materials/save", saveStudyMaterial);
 router.post("/study-materials/combine", combineMaterials);
+router.post("/study-materials/:id/chat-sessions", createStudyMaterialChatSession);
+router.get("/study-materials/:id/chat-sessions", listStudyMaterialChatSessions);
+router.get("/study-materials/:id/chat-sessions/:sessionId", getStudyMaterialChatSession);
+router.post("/study-materials/:id/chat-sessions/:sessionId/messages", chatWithStudyMaterial);
 router.get("/study-materials", getAllStudyMaterials);
 router.get("/study-materials/syllabus/:syllabusId", getStudyMaterials);
 router.get("/study-materials/:id", getStudyMaterialById);

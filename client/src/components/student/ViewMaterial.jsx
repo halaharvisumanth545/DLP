@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import api, { endpoints } from "../../services/api";
 import { calculateReadingTime } from "../../utils/helpers";
 import "./ViewMaterial.css"; // We'll create this specific CSS file
@@ -9,14 +9,31 @@ import remarkGfm from 'remark-gfm';
 import rehypeKatex from 'rehype-katex';
 import rehypeRaw from 'rehype-raw';
 import ReactMarkdown from 'react-markdown';
-import { ClipboardIcon, CheckCircleIcon } from "../common/Icons";
+import { ClipboardIcon, CheckCircleIcon, XIcon, ListIcon, PlusIcon, SendIcon } from "../common/Icons";
 
 export default function ViewMaterial() {
     const { id } = useParams();
-    const navigate = useNavigate();
     const [material, setMaterial] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
+    const [isChatOpen, setIsChatOpen] = useState(false);
+    const [showChatHistory, setShowChatHistory] = useState(false);
+    const [chatInput, setChatInput] = useState("");
+    const [chatLoading, setChatLoading] = useState(false);
+    const [chatMessages, setChatMessages] = useState([]);
+    const [chatSessions, setChatSessions] = useState([]);
+    const [activeChatSessionId, setActiveChatSessionId] = useState("");
+    const [chatSessionLoading, setChatSessionLoading] = useState(false);
+
+    const buildDraftAssistantMessage = () => ({
+        id: `assistant-draft-${Date.now()}`,
+        role: "assistant",
+        text: material?.topic
+            ? `Ask me anything about ${material.topic}. I will answer from the study material for this topic.`
+            : "Ask me anything about this topic. I will answer from the study material you are viewing.",
+        sources: [],
+        inScope: true,
+    });
 
     const scrollToSection = (index) => {
         const el = document.getElementById(`section-${index}`);
@@ -30,6 +47,50 @@ export default function ViewMaterial() {
     }, [id]);
 
     const contentRef = useRef(null);
+    const chatMessagesRef = useRef(null);
+    const historyPanelRef = useRef(null);
+    const historyToggleRef = useRef(null);
+
+    useEffect(() => {
+        if (chatMessagesRef.current) {
+            chatMessagesRef.current.scrollTop = chatMessagesRef.current.scrollHeight;
+        }
+    }, [chatMessages, isChatOpen]);
+
+    useEffect(() => {
+        if (!material?._id) {
+            return;
+        }
+
+        initializeChatPanel();
+    }, [material?._id]);
+
+    useEffect(() => {
+        if (!showChatHistory) {
+            return undefined;
+        }
+
+        const handleOutsideHistoryClick = (event) => {
+            const target = event.target;
+            if (historyPanelRef.current?.contains(target)) {
+                return;
+            }
+
+            if (historyToggleRef.current?.contains(target)) {
+                return;
+            }
+
+            setShowChatHistory(false);
+        };
+
+        document.addEventListener("mousedown", handleOutsideHistoryClick);
+        document.addEventListener("touchstart", handleOutsideHistoryClick);
+
+        return () => {
+            document.removeEventListener("mousedown", handleOutsideHistoryClick);
+            document.removeEventListener("touchstart", handleOutsideHistoryClick);
+        };
+    }, [showChatHistory]);
 
     // Markdown customization for ViewMaterial (Mirroring StudyMaterial)
     const CopyButton = ({ content }) => {
@@ -131,6 +192,44 @@ export default function ViewMaterial() {
         }
     };
 
+    const ChatMarkdownComponents = {
+        p({ node, ...props }) {
+            return <p {...props} />;
+        },
+        ul({ node, ...props }) {
+            return <ul {...props} />;
+        },
+        ol({ node, ...props }) {
+            return <ol {...props} />;
+        },
+        li({ node, ...props }) {
+            return <li {...props} />;
+        },
+        strong({ node, ...props }) {
+            return <strong {...props} />;
+        },
+        em({ node, ...props }) {
+            return <em {...props} />;
+        },
+        code({ inline, className, children, ...props }) {
+            if (inline) {
+                return (
+                    <code className={`material-chat-inline-code ${className || ""}`.trim()} {...props}>
+                        {children}
+                    </code>
+                );
+            }
+
+            return (
+                <pre className="material-chat-code-block">
+                    <code className={className} {...props}>
+                        {children}
+                    </code>
+                </pre>
+            );
+        },
+    };
+
     const fetchMaterial = async () => {
         try {
             setLoading(true);
@@ -158,6 +257,152 @@ export default function ViewMaterial() {
             setError("Failed to load material");
         } finally {
             setLoading(false);
+        }
+    };
+
+    const normalizeChatSession = (session) => ({
+        id: session.id || session._id,
+        title: session.title || "New chat",
+        topic: session.topic || material?.topic || "",
+        createdAt: session.createdAt,
+        lastActivityAt: session.lastActivityAt,
+        messageCount: session.messageCount || (Array.isArray(session.messages) ? session.messages.length : 0),
+        messages: Array.isArray(session.messages)
+            ? session.messages.map((message) => ({
+                id: message.id || message._id || `${message.role}-${Date.now()}`,
+                role: message.role,
+                text: message.text,
+                sources: Array.isArray(message.sources) ? message.sources : [],
+                inScope: message.inScope !== false,
+                createdAt: message.createdAt,
+            }))
+            : [],
+    });
+
+    const loadChatSessions = async (preferredSessionId = "") => {
+        const response = await api.get(`${endpoints.student.materialChatSessions}/${id}/chat-sessions`);
+        const sessions = (response.data.sessions || []).map(normalizeChatSession);
+        setChatSessions(sessions);
+
+        if (preferredSessionId) {
+            setActiveChatSessionId(preferredSessionId);
+        }
+
+        return sessions;
+    };
+
+    const createChatSession = async ({ hydrateMessages = true } = {}) => {
+        const response = await api.post(`${endpoints.student.materialChatSessions}/${id}/chat-sessions`);
+        const session = normalizeChatSession(response.data.session);
+        setActiveChatSessionId(session.id);
+        if (hydrateMessages) {
+            setChatMessages(session.messages);
+        }
+        return session;
+    };
+
+    const resetDraftChat = () => {
+        setActiveChatSessionId("");
+        setChatInput("");
+        setChatMessages([buildDraftAssistantMessage()]);
+    };
+
+    const initializeChatPanel = async () => {
+        try {
+            setChatSessionLoading(true);
+            setChatSessions([]);
+            setShowChatHistory(false);
+            resetDraftChat();
+            await loadChatSessions();
+        } catch (err) {
+            const message = err.response?.data?.error || "Failed to initialize the topic assistant.";
+            setChatMessages([
+                {
+                    id: `assistant-init-${Date.now()}`,
+                    role: "assistant",
+                    text: message,
+                    sources: [],
+                },
+            ]);
+        } finally {
+            setChatSessionLoading(false);
+        }
+    };
+
+    const openChatSession = async (sessionId) => {
+        if (!sessionId || sessionId === activeChatSessionId) {
+            setShowChatHistory(false);
+            return;
+        }
+
+        try {
+            setChatSessionLoading(true);
+            const response = await api.get(`${endpoints.student.materialChatSessions}/${id}/chat-sessions/${sessionId}`);
+            const session = normalizeChatSession(response.data.session);
+            setActiveChatSessionId(session.id);
+            setChatMessages(session.messages);
+            setShowChatHistory(false);
+            setIsChatOpen(true);
+        } catch (err) {
+            const message = err.response?.data?.error || "Failed to load that chat session.";
+            setChatMessages((currentMessages) => [
+                ...currentMessages,
+                {
+                    id: `assistant-load-error-${Date.now()}`,
+                    role: "assistant",
+                    text: message,
+                    sources: [],
+                },
+            ]);
+        } finally {
+            setChatSessionLoading(false);
+        }
+    };
+
+    const submitChatQuery = async () => {
+        const trimmedQuery = chatInput.trim();
+        if (!trimmedQuery || chatLoading) {
+            return;
+        }
+
+        const userMessage = {
+            id: `user-${Date.now()}`,
+            role: "user",
+            text: trimmedQuery,
+            sources: [],
+        };
+
+        setChatMessages((currentMessages) => [...currentMessages, userMessage]);
+        setChatInput("");
+        setChatLoading(true);
+
+        try {
+            let sessionId = activeChatSessionId;
+            if (!sessionId) {
+                const session = await createChatSession({ hydrateMessages: false });
+                sessionId = session.id;
+            }
+
+            const response = await api.post(`${endpoints.student.materialChatSessions}/${id}/chat-sessions/${sessionId}/messages`, {
+                query: trimmedQuery,
+            });
+            const session = normalizeChatSession(response.data.session);
+            setActiveChatSessionId(session.id);
+            setChatMessages(session.messages);
+            await loadChatSessions(session.id);
+        } catch (err) {
+            const message = err.response?.data?.error || "I could not process that question right now.";
+            setChatMessages((currentMessages) => [
+                ...currentMessages,
+                {
+                    id: `assistant-error-${Date.now()}`,
+                    role: "assistant",
+                    text: message,
+                    sources: [],
+                },
+            ]);
+        } finally {
+            setChatLoading(false);
         }
     };
 
@@ -270,6 +515,170 @@ export default function ViewMaterial() {
                         </button>
                     </div>
                 </div>
+            </div>
+
+            <div className="material-chat-shell">
+                {isChatOpen && (
+                    <div className="material-chat-panel">
+                        <div className="material-chat-header">
+                            <div>
+                                <strong>Topic Assistant</strong>
+                            </div>
+                            <div className="material-chat-header-actions">
+                                <button
+                                    type="button"
+                                    className="material-chat-action"
+                                    ref={historyToggleRef}
+                                    onClick={() => setShowChatHistory((open) => !open)}
+                                    aria-label="Toggle chat history"
+                                    title="History"
+                                >
+                                    <ListIcon />
+                                </button>
+                                <button
+                                    type="button"
+                                    className="material-chat-close"
+                                    onClick={() => setIsChatOpen(false)}
+                                    aria-label="Close chat"
+                                >
+                                    <XIcon />
+                                </button>
+                            </div>
+                        </div>
+
+                        {showChatHistory && (
+                            <div
+                                ref={historyPanelRef}
+                                className="material-chat-history material-chat-history--overlay"
+                            >
+                                <div className="material-chat-history-topbar">
+                                    <strong>History</strong>
+                                    <div className="material-chat-history-actions">
+                                        <button
+                                            type="button"
+                                            className="material-chat-new-session"
+                                            onClick={() => {
+                                                setShowChatHistory(false);
+                                                resetDraftChat();
+                                            }}
+                                        >
+                                            <PlusIcon />
+                                            <span>New chat</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className="material-chat-action"
+                                            onClick={() => setShowChatHistory(false)}
+                                            aria-label="Close history"
+                                            title="Close history"
+                                        >
+                                            <XIcon />
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="material-chat-history-list">
+                                    {chatSessions.length > 0 ? (
+                                        chatSessions.map((session) => (
+                                            <button
+                                                key={session.id}
+                                                type="button"
+                                                className={`material-chat-history-item ${session.id === activeChatSessionId ? "material-chat-history-item--active" : ""}`}
+                                                onClick={() => openChatSession(session.id)}
+                                            >
+                                                <strong>{session.title}</strong>
+                                                <span>{new Date(session.lastActivityAt || session.createdAt).toLocaleString()}</span>
+                                            </button>
+                                        ))
+                                    ) : (
+                                        <div className="material-chat-empty-state">No previous chats for this material yet.</div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        <div className="material-chat-messages" ref={chatMessagesRef}>
+                            {chatSessionLoading && chatMessages.length === 0 ? (
+                                <div className="material-chat-empty-state">Preparing a new topic chat...</div>
+                            ) : null}
+                            {chatMessages.map((message) => (
+                                <div
+                                    key={message.id}
+                                    className={`material-chat-bubble material-chat-bubble--${message.role}`}
+                                >
+                                    {message.role === "assistant" ? (
+                                        <ReactMarkdown
+                                            remarkPlugins={[remarkGfm, remarkMath]}
+                                            rehypePlugins={[rehypeKatex]}
+                                            components={ChatMarkdownComponents}
+                                        >
+                                            {message.text}
+                                        </ReactMarkdown>
+                                    ) : (
+                                        <p>{message.text}</p>
+                                    )}
+                                    {message.sources?.length > 0 && (
+                                        <div className="material-chat-sources">
+                                            {message.sources.map((source) => (
+                                                <span key={source} className="material-chat-source-pill">
+                                                    {source}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            ))}
+                            {chatLoading && (
+                                <div className="material-chat-bubble material-chat-bubble--assistant material-chat-bubble--loading">
+                                    <span></span>
+                                    <span></span>
+                                    <span></span>
+                                </div>
+                            )}
+                        </div>
+
+                        <form
+                            className="material-chat-form"
+                            onSubmit={(e) => {
+                                e.preventDefault();
+                                submitChatQuery();
+                            }}
+                        >
+                            <textarea
+                                className="material-chat-input"
+                                placeholder={`Ask about ${material.topic}`}
+                                value={chatInput}
+                                onChange={(e) => setChatInput(e.target.value)}
+                                onKeyDown={(e) => {
+                                    if (e.key === "Enter" && !e.shiftKey) {
+                                        e.preventDefault();
+                                        submitChatQuery();
+                                    }
+                                }}
+                                rows={1}
+                            />
+                            <button
+                                type="submit"
+                                className="material-chat-send"
+                                disabled={chatLoading || chatSessionLoading || !chatInput.trim()}
+                                aria-label="Send message"
+                                title="Send"
+                            >
+                                <SendIcon />
+                            </button>
+                        </form>
+                    </div>
+                )}
+
+                <button
+                    type="button"
+                    className="material-chat-launcher"
+                    onClick={() => setIsChatOpen((open) => !open)}
+                    aria-label={isChatOpen ? "Hide topic assistant" : "Open topic assistant"}
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="24" height="24">
+                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                    </svg>
+                </button>
             </div>
         </div>
     );

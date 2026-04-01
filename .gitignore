@@ -13,4 +13,5 @@ client/node_modules/
 client/dist/
 __pycache__/
 *.pyc
-/docs/*
+docs/*
+App_launch.txt

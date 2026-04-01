@@ -33,6 +33,17 @@ export default function SessionReview() {
     const [isRangesInitialized, setIsRangesInitialized] = useState(false);
 
     useEffect(() => {
+        setResult(null);
+        setQuestions([]);
+        setCurrentIndex(0);
+        setIsRangesInitialized(false);
+        setAppliedTimeRange([0, 100]);
+        setAppliedQuestionRange([1, 10]);
+        setLocalTimeRange([0, 100]);
+        setLocalQuestionRange([1, 10]);
+        setLoading(true);
+        setError("");
+
         const fetchData = async () => {
             try {
                 const [resultData, questionsData] = await Promise.all([
@@ -111,20 +122,20 @@ export default function SessionReview() {
     ] : [];
 
     const totalTimeSwaps = chartData.length > 0 ? chartData[chartData.length - 1].cumulativeTime : 0;
-    const maxAllocatedTime = result?.sessionId?.totalTimeAllowed || totalTimeSwaps; // Fix max slider time on early submission
-
-    const totalQs = questions.length || 1;
+    const sessionTimeSpent = result?.timeSpent?.total ?? totalTimeSwaps;
+    const maxSessionTime = Math.max(sessionTimeSpent, totalTimeSwaps, 1);
+    const totalQs = result?.questionBreakdown?.total || questions.length || 1;
+    const hasInitialRangeData = !loading && !!result && questions.length > 0;
 
     useEffect(() => {
-        if (!isRangesInitialized && (maxAllocatedTime >= 0 || totalTimeSwaps >= 0) && totalQs > 0) {
-            const maxTime = Math.max(maxAllocatedTime, 1); // fallback to 1s if 0 to avoid Recharts domain crash
-            setAppliedTimeRange([0, maxTime]);
-            setLocalTimeRange([0, maxTime]);
+        if (!isRangesInitialized && hasInitialRangeData && totalQs > 0) {
+            setAppliedTimeRange([0, maxSessionTime]);
+            setLocalTimeRange([0, maxSessionTime]);
             setAppliedQuestionRange([1, totalQs]);
             setLocalQuestionRange([1, totalQs]);
             setIsRangesInitialized(true);
         }
-    }, [maxAllocatedTime, totalTimeSwaps, totalQs, isRangesInitialized]);
+    }, [hasInitialRangeData, maxSessionTime, totalQs, isRangesInitialized]);
 
     useEffect(() => {
         if (!isRangesInitialized) return;
@@ -251,7 +262,7 @@ export default function SessionReview() {
                                                     </div>
                                                     <input
                                                         type="range"
-                                                        min={0} max={Math.max(maxAllocatedTime, 1)}
+                                                        min={0} max={maxSessionTime}
                                                         value={localTimeRange[0]}
                                                         onChange={(e) => setLocalTimeRange([Math.min(Number(e.target.value), localTimeRange[1]), localTimeRange[1]])}
                                                         style={{ width: '100%', accentColor: 'var(--color-primary)', cursor: 'pointer' }}
@@ -263,7 +274,7 @@ export default function SessionReview() {
                                                     </div>
                                                     <input
                                                         type="range"
-                                                        min={0} max={Math.max(maxAllocatedTime, 1)}
+                                                        min={0} max={maxSessionTime}
                                                         value={localTimeRange[1]}
                                                         onChange={(e) => setLocalTimeRange([localTimeRange[0], Math.max(Number(e.target.value), localTimeRange[0])])}
                                                         style={{ width: '100%', accentColor: 'var(--color-primary)', cursor: 'pointer' }}
