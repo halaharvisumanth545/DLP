@@ -1,0 +1,262 @@
+:root {
+    color: #173038;
+    background:
+        radial-gradient(circle at top left, rgba(212, 233, 227, 0.9), transparent 34%),
+        radial-gradient(circle at top right, rgba(255, 240, 214, 0.85), transparent 30%),
+        linear-gradient(180deg, #f5faf8 0%, #fdfaf4 100%);
+    font-family: "IBM Plex Sans", "Avenir Next", "Segoe UI", sans-serif;
+    line-height: 1.55;
+    font-weight: 400;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+    margin: 0;
+    min-height: 100%;
+}
+
+body {
+    min-width: 320px;
+}
+
+code,
+pre {
+    font-family: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+}
+
+.pdd-page {
+    width: min(1280px, calc(100vw - 32px));
+    margin: 0 auto;
+    padding: 36px 0 72px;
+}
+
+.pdd-hero,
+.pdd-note,
+.pdd-figure-card,
+.pdd-metric-card {
+    border: 1px solid rgba(42, 71, 79, 0.12);
+    box-shadow: 0 22px 60px rgba(38, 61, 66, 0.08);
+}
+
+.pdd-hero,
+.pdd-note,
+.pdd-figure-card {
+    border-radius: 28px;
+    background: rgba(255, 255, 255, 0.86);
+    backdrop-filter: blur(10px);
+}
+
+.pdd-hero {
+    padding: 42px;
+    background:
+        linear-gradient(140deg, rgba(255, 255, 255, 0.94), rgba(245, 250, 247, 0.88)),
+        linear-gradient(135deg, #d7ece5, #fff0d3);
+}
+
+.pdd-hero__eyebrow,
+.pdd-figure-card__eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    border-radius: 999px;
+    background: rgba(31, 77, 67, 0.08);
+    color: #24493f;
+    font-size: 0.82rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.pdd-hero h1,
+.pdd-note h2,
+.pdd-figure-card h2 {
+    margin: 14px 0 10px;
+    font-family: "Avenir Next", "Trebuchet MS", sans-serif;
+    letter-spacing: -0.03em;
+}
+
+.pdd-hero h1 {
+    max-width: 980px;
+    font-size: clamp(2.15rem, 4.6vw, 4.1rem);
+    line-height: 0.98;
+}
+
+.pdd-hero__lede,
+.pdd-note p,
+.pdd-figure-card__placement,
+.pdd-chart-shell__intro p,
+.pdd-hero__card p,
+.pdd-metric-card p {
+    color: #35545d;
+}
+
+.pdd-hero__grid {
+    display: grid;
+    gap: 18px;
+    margin-top: 28px;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.pdd-hero__card {
+    padding: 18px;
+    border-radius: 22px;
+    background: rgba(255, 255, 255, 0.78);
+    border: 1px solid rgba(41, 72, 78, 0.1);
+}
+
+.pdd-hero__card span {
+    display: block;
+    margin-bottom: 8px;
+    color: #6c7f86;
+    font-size: 0.81rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+.pdd-hero__card strong {
+    display: block;
+    color: #18343a;
+    font-size: 1.04rem;
+}
+
+.pdd-note,
+.pdd-figure-card {
+    margin-top: 28px;
+}
+
+.pdd-note {
+    padding: 26px 28px;
+    border-left: 6px solid #b7832e;
+    background:
+        linear-gradient(140deg, rgba(255, 247, 229, 0.98), rgba(255, 255, 255, 0.88));
+}
+
+.pdd-note code {
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: rgba(27, 61, 69, 0.08);
+}
+
+.pdd-figure-card {
+    padding: 24px;
+}
+
+.pdd-figure-card__header {
+    display: flex;
+    justify-content: space-between;
+    gap: 18px;
+    align-items: flex-start;
+}
+
+.pdd-figure-card__placement {
+    max-width: 290px;
+    margin: 8px 0 0;
+    font-weight: 600;
+    text-align: right;
+}
+
+.pdd-figure-card__canvas,
+.pdd-chart-shell__canvas {
+    margin-top: 18px;
+    border-radius: 22px;
+    background: linear-gradient(180deg, #fbfefd, #f2f7f8);
+    padding: 18px;
+    overflow-x: auto;
+}
+
+.pdd-figure-card__canvas svg {
+    width: 100%;
+    height: auto;
+    display: block;
+}
+
+.pdd-figure-card__error {
+    margin-top: 16px;
+    padding: 16px;
+    border-radius: 18px;
+    background: #fff1ee;
+    color: #8a3828;
+}
+
+.pdd-chart-shell {
+    display: grid;
+    gap: 18px;
+}
+
+.pdd-metric-grid {
+    display: grid;
+    gap: 16px;
+    margin-top: 18px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.pdd-metric-card {
+    padding: 18px;
+    border-radius: 20px;
+    background: rgba(255, 255, 255, 0.82);
+}
+
+.pdd-metric-card__label {
+    display: block;
+    margin-bottom: 10px;
+    color: #6d7f84;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+.pdd-metric-card strong {
+    display: block;
+    margin-bottom: 8px;
+    color: #16363f;
+    font-size: 1.06rem;
+}
+
+@media (max-width: 1100px) {
+    .pdd-hero__grid,
+    .pdd-metric-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 760px) {
+    .pdd-page {
+        width: min(100vw, calc(100vw - 20px));
+        padding: 20px 0 44px;
+    }
+
+    .pdd-hero,
+    .pdd-note,
+    .pdd-figure-card {
+        padding: 20px;
+        border-radius: 22px;
+    }
+
+    .pdd-figure-card__header {
+        flex-direction: column;
+    }
+
+    .pdd-figure-card__placement {
+        max-width: none;
+        text-align: left;
+    }
+
+    .pdd-hero__grid,
+    .pdd-metric-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .pdd-figure-card__canvas,
+    .pdd-chart-shell__canvas {
+        padding: 10px;
+    }
+}

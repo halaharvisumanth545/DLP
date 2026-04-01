@@ -49,7 +49,7 @@ export async function getDashboard(req, res) {
             user: {
                 name: user.name,
                 email: user.email,
-                role: user.role,
+                role: "student",
             },
             stats: {
                 totalSyllabi: await Syllabus.countDocuments({ userId }),

@@ -5,7 +5,6 @@ import morgan from "morgan";
 // Import routes
 import authRoutes from "./routes/authRoutes.js";
 import studentRoutes from "./routes/studentRoutes.js";
-import teacherRoutes from "./routes/teacherRoutes.js";
 import openaiRoutes from "./routes/openaiRoutes.js";
 import materialLoadRoutes from "./routes/materialLoadRoutes.js";
 // import ragRoutes from "./routes/ragRoutes.js";  // RAG detached
@@ -32,7 +31,6 @@ app.get("/health", (_req, res) => {
 // API Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/student", studentRoutes);
-app.use("/api/teacher", teacherRoutes);
 app.use("/api/openai", openaiRoutes);
 app.use("/api/material-load", materialLoadRoutes);
 // app.use("/api/rag", ragRoutes);  // RAG detached

@@ -1,0 +1,52 @@
+html, body {
+    margin: 0;
+    padding: 0;
+    background: #ffffff;
+    min-height: 100%;
+}
+
+body {
+    font-family: Arial, Helvetica, sans-serif;
+}
+
+#root {
+    min-height: 100vh;
+}
+
+.qde-page {
+    width: 100%;
+    max-width: 1720px;
+    margin: 0 auto;
+    padding: 24px 24px 40px;
+    background: #ffffff;
+    color: #153527;
+}
+
+.qde-title {
+    margin: 0 0 24px;
+    font-size: 42px;
+    line-height: 1.1;
+    font-weight: 700;
+    color: #18343a;
+}
+
+.qde-frame {
+    border: 2px solid #d7e5da;
+    border-radius: 24px;
+    padding: 32px 24px;
+    background: #fcfefd;
+    display: flex;
+    justify-content: center;
+}
+
+.qde-canvas {
+    width: auto;
+    min-height: 2200px;
+}
+
+.qde-canvas svg {
+    width: auto;
+    height: auto;
+    display: block;
+    margin: 0 auto;
+}

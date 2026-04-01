@@ -309,13 +309,13 @@ sequenceDiagram
     participant DB as MongoDB
     
     User->>Auth: POST /api/auth/login
-    Auth->>DB: Verify Credentials & Role
+    Auth->>DB: Verify Credentials
     
     alt Validation Failed
         DB-->>Auth: User Not Found / Wrong Password
         Auth-->>User: 401 Unauthorized
     else Successful Login
-        DB-->>Auth: User Object (Role: Student/Teacher)
+        DB-->>Auth: Student User Object
         Auth->>Auth: Generate JWT Token
         Auth-->>User: 200 OK (Token + User Data)
     end

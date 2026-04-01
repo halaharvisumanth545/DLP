@@ -3,19 +3,14 @@ import Login from "./pages/Login";
 import Register from "./pages/Register";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
+import ArchitecturePage from "./pages/ArchitecturePage";
 import StudentRoutes from "./routes/StudentRoutes";
-import TeacherRoutes from "./routes/TeacherRoutes";
-import { isAuthenticated, getUserRole } from "./services/auth";
+import { isAuthenticated } from "./services/auth";
 import "./index.css";
 
-// Home redirect based on auth status and role
 function HomeRedirect() {
   if (!isAuthenticated()) {
     return <Navigate to="/login" replace />;
-  }
-  const role = getUserRole();
-  if (role === "teacher") {
-    return <Navigate to="/teacher" replace />;
   }
   return <Navigate to="/student" replace />;
 }
@@ -29,10 +24,10 @@ export default function App() {
         <Route path="/register" element={<Register />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
+        <Route path="/architecture" element={<ArchitecturePage />} />
 
-        {/* Role-based routes */}
+        {/* Application routes */}
         <Route path="/student/*" element={<StudentRoutes />} />
-        <Route path="/teacher/*" element={<TeacherRoutes />} />
 
         {/* Home redirect */}
         <Route path="/" element={<HomeRedirect />} />

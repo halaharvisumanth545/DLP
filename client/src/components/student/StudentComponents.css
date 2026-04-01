@@ -1627,12 +1627,239 @@
     line-height: 1.6;
 }
 
+.architecture-page {
+    display: grid;
+    gap: 24px;
+}
+
+.architecture-hero {
+    display: grid;
+    gap: 24px;
+    background:
+        radial-gradient(circle at top right, rgba(40, 120, 93, 0.12), transparent 38%),
+        linear-gradient(180deg, #fdfcf7 0%, #f8fbfc 100%);
+}
+
+.architecture-hero__copy {
+    display: grid;
+    gap: 12px;
+}
+
+.architecture-hero__copy h2 {
+    margin: 0;
+    color: #153c2f;
+    font-size: 1.5rem;
+}
+
+.architecture-hero__copy p {
+    margin: 0;
+    color: #36515f;
+    line-height: 1.7;
+    max-width: 76ch;
+}
+
+.architecture-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    width: fit-content;
+    padding: 8px 12px;
+    border-radius: 999px;
+    background: #153c2f;
+    color: #f7fbf8;
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.architecture-pill--soft {
+    background: #edf4f6;
+    color: #355767;
+}
+
+.architecture-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 16px;
+}
+
+.architecture-summary-card {
+    border-radius: 18px;
+    border: 1px solid rgba(77, 104, 114, 0.16);
+    background: rgba(255, 255, 255, 0.92);
+    padding: 18px;
+    display: grid;
+    gap: 10px;
+}
+
+.architecture-summary-card h3 {
+    margin: 0;
+    color: #153c2f;
+    font-size: 1rem;
+}
+
+.architecture-summary-card p {
+    margin: 0;
+    color: #47606b;
+    line-height: 1.65;
+}
+
+.architecture-diagram-grid {
+    display: grid;
+    gap: 20px;
+}
+
+.architecture-diagram-card {
+    display: grid;
+    gap: 18px;
+    overflow: hidden;
+}
+
+.architecture-diagram-card__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+}
+
+.architecture-diagram-card__header h2 {
+    margin: 0 0 8px;
+}
+
+.architecture-diagram-card__header p {
+    margin: 0;
+    color: #586e7a;
+    line-height: 1.65;
+    max-width: 76ch;
+}
+
+.architecture-diagram {
+    display: grid;
+    gap: 14px;
+}
+
+.architecture-diagram__toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.architecture-diagram__ratio {
+    color: #47606b;
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+
+.architecture-diagram__actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.architecture-btn {
+    border: 0;
+    border-radius: 999px;
+    padding: 10px 14px;
+    background: #153c2f;
+    color: #f7fbf8;
+    font-size: 0.88rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: transform 0.18s ease, opacity 0.18s ease, background 0.18s ease;
+}
+
+.architecture-btn:hover:not(:disabled) {
+    transform: translateY(-1px);
+    background: #1e4c3e;
+}
+
+.architecture-btn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.architecture-btn--secondary {
+    background: #edf4f6;
+    color: #355767;
+}
+
+.architecture-btn--secondary:hover:not(:disabled) {
+    background: #dfecef;
+}
+
+.architecture-diagram__frame {
+    aspect-ratio: 16 / 9;
+    overflow: hidden;
+    border-radius: 22px;
+    border: 1px solid rgba(77, 104, 114, 0.16);
+    background:
+        radial-gradient(circle at top left, rgba(26, 84, 102, 0.08), transparent 25%),
+        linear-gradient(180deg, #ffffff 0%, #f8fbfc 100%);
+    padding: 18px;
+    display: flex;
+    align-items: stretch;
+    justify-content: center;
+    min-height: 420px;
+}
+
+.architecture-diagram__canvas {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.architecture-diagram__canvas svg {
+    width: 100%;
+    height: 100%;
+    max-width: 100%;
+    max-height: 100%;
+}
+
+.architecture-diagram--error {
+    display: grid;
+    gap: 12px;
+    color: #7f1d1d;
+    background: #fff7f7;
+}
+
+.architecture-diagram--error p,
+.architecture-diagram--error strong {
+    margin: 0;
+}
+
+.architecture-diagram--error pre {
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-size: 0.85rem;
+    color: #5b2730;
+}
+
 @media (max-width: 768px) {
     .material-load__result-header,
     .material-load__clusters-head,
     .material-load__cluster-top {
         flex-direction: column;
         align-items: flex-start;
+    }
+
+    .architecture-diagram-card__header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .architecture-diagram__toolbar {
+        align-items: flex-start;
+    }
+
+    .architecture-diagram__frame {
+        min-height: 280px;
+        padding: 12px;
     }
 }
 

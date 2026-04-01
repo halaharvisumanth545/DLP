@@ -132,43 +132,6 @@
     background-color: var(--item-hover);
 }
 
-.role-selector {
-    display: flex;
-    gap: 12px;
-}
-
-.role-btn {
-    flex: 1;
-    background: var(--item-hover);
-    border: 1px solid var(--border-color);
-    border-radius: 10px;
-    padding: 14px;
-    color: var(--text-muted);
-    font-size: 0.9rem;
-    font-weight: 500;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    transition: all 0.2s;
-}
-
-.role-btn:hover {
-    background: var(--item-hover);
-}
-
-.role-btn.active {
-    background: linear-gradient(135deg, rgba(99, 102, 241, 0.2) 0%, rgba(139, 92, 246, 0.2) 100%);
-    background: linear-gradient(135deg, rgba(99, 102, 241, 0.2) 0%, rgba(139, 92, 246, 0.2) 100%);
-    border-color: var(--color-primary);
-    color: var(--color-secondary);
-}
-
-.role-btn span {
-    font-size: 1.25rem;
-}
-
 .btn-submit {
     background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-secondary) 100%);
     color: white;

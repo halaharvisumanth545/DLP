@@ -14,13 +14,6 @@ const TEST_USERS = [
         password: "student123",
         role: "student",
     },
-    {
-        id: "test-teacher-001",
-        name: "Test Teacher",
-        email: "teacher@test.com",
-        password: "teacher123",
-        role: "teacher",
-    },
 ];
 
 // Initialize mock users in localStorage
@@ -47,6 +40,17 @@ function generateMockToken(user) {
     return `mock-jwt-${user.id}-${Date.now()}`;
 }
 
+function normalizeUser(user) {
+    if (!user) {
+        return null;
+    }
+
+    return {
+        ...user,
+        role: "student",
+    };
+}
+
 // ============================================
 // AUTH FUNCTIONS
 // ============================================
@@ -54,10 +58,11 @@ function generateMockToken(user) {
 // Login user
 export async function login(email, password) {
     if (MOCK_MODE) {
-        // Mock login
         const users = getMockUsers();
         const user = users.find(
-            (u) => u.email.toLowerCase() === email.toLowerCase() && u.password === password
+            (candidate) =>
+                candidate.email.toLowerCase() === email.toLowerCase() &&
+                candidate.password === password
         );
 
         if (!user) {
@@ -65,7 +70,12 @@ export async function login(email, password) {
         }
 
         const token = generateMockToken(user);
-        const userData = { id: user.id, name: user.name, email: user.email, role: user.role };
+        const userData = normalizeUser({
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            role: user.role,
+        });
 
         localStorage.setItem("token", token);
         localStorage.setItem("user", JSON.stringify(userData));
@@ -73,25 +83,23 @@ export async function login(email, password) {
         return { token, user: userData, message: "Login successful (Mock Mode)" };
     }
 
-    // Real API login
     const response = await api.post(endpoints.login, { email, password });
+    const normalizedUser = normalizeUser(response.data.user);
 
     if (response.data.token) {
         localStorage.setItem("token", response.data.token);
-        localStorage.setItem("user", JSON.stringify(response.data.user));
+        localStorage.setItem("user", JSON.stringify(normalizedUser));
     }
 
-    return response.data;
+    return { ...response.data, user: normalizedUser };
 }
 
 // Register user
 export async function register(userData) {
     if (MOCK_MODE) {
-        // Mock register
         const users = getMockUsers();
 
-        // Check if email exists
-        if (users.find((u) => u.email.toLowerCase() === userData.email.toLowerCase())) {
+        if (users.find((user) => user.email.toLowerCase() === userData.email.toLowerCase())) {
             throw { response: { data: { error: "User with this email already exists" } } };
         }
 
@@ -100,14 +108,19 @@ export async function register(userData) {
             name: userData.name,
             email: userData.email.toLowerCase(),
             password: userData.password,
-            role: userData.role || "student",
+            role: "student",
         };
 
         users.push(newUser);
         saveMockUsers(users);
 
         const token = generateMockToken(newUser);
-        const returnUser = { id: newUser.id, name: newUser.name, email: newUser.email, role: newUser.role };
+        const returnUser = normalizeUser({
+            id: newUser.id,
+            name: newUser.name,
+            email: newUser.email,
+            role: newUser.role,
+        });
 
         localStorage.setItem("token", token);
         localStorage.setItem("user", JSON.stringify(returnUser));
@@ -115,15 +128,19 @@ export async function register(userData) {
         return { token, user: returnUser, message: "Registration successful (Mock Mode)" };
     }
 
-    // Real API register
-    const response = await api.post(endpoints.register, userData);
+    const response = await api.post(endpoints.register, {
+        name: userData.name,
+        email: userData.email,
+        password: userData.password,
+    });
+    const normalizedUser = normalizeUser(response.data.user);
 
     if (response.data.token) {
         localStorage.setItem("token", response.data.token);
-        localStorage.setItem("user", JSON.stringify(response.data.user));
+        localStorage.setItem("user", JSON.stringify(normalizedUser));
     }
 
-    return response.data;
+    return { ...response.data, user: normalizedUser };
 }
 
 // Logout user
@@ -138,7 +155,9 @@ export function getCurrentUser() {
     const userStr = localStorage.getItem("user");
     if (userStr) {
         try {
-            return JSON.parse(userStr);
+            const normalizedUser = normalizeUser(JSON.parse(userStr));
+            localStorage.setItem("user", JSON.stringify(normalizedUser));
+            return normalizedUser;
         } catch {
             return null;
         }
@@ -158,41 +177,34 @@ export async function getProfile() {
         return { user };
     }
     const response = await api.get(endpoints.profile);
-    return response.data;
+    return { ...response.data, user: normalizeUser(response.data.user) };
 }
 
 // Update user profile
 export async function updateProfile(userData) {
     if (MOCK_MODE) {
         const currentUser = getCurrentUser();
-        const updatedUser = { ...currentUser, ...userData };
+        const updatedUser = normalizeUser({ ...currentUser, ...userData });
         localStorage.setItem("user", JSON.stringify(updatedUser));
         return { user: updatedUser };
     }
 
     const response = await api.put(endpoints.profile, userData);
+    const normalizedUser = normalizeUser(response.data.user);
 
-    if (response.data.user) {
-        localStorage.setItem("user", JSON.stringify(response.data.user));
+    if (normalizedUser) {
+        localStorage.setItem("user", JSON.stringify(normalizedUser));
     }
 
-    return response.data;
+    return { ...response.data, user: normalizedUser };
 }
 
-// Check user role
 export function getUserRole() {
-    const user = getCurrentUser();
-    return user?.role || null;
+    return isAuthenticated() ? "student" : null;
 }
 
-// Check if user is student
 export function isStudent() {
-    return getUserRole() === "student";
-}
-
-// Check if user is teacher
-export function isTeacher() {
-    return getUserRole() === "teacher";
+    return isAuthenticated();
 }
 
 // Request password reset
@@ -225,7 +237,8 @@ export async function editPassword(currentPassword, newPassword) {
 // Initialize mock users on load
 initMockUsers();
 
-console.log("🔧 Auth running in MOCK MODE");
-console.log("📧 Test credentials:");
-console.log("   Student: student@test.com / student123");
-console.log("   Teacher: teacher@test.com / teacher123");
+if (MOCK_MODE) {
+    console.log("🔧 Auth running in MOCK MODE");
+    console.log("📧 Test credentials:");
+    console.log("   Student: student@test.com / student123");
+}

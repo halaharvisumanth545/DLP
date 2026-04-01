@@ -19,15 +19,11 @@ import Analytics from "../components/student/Analytics";
 import WeakTopics from "../components/student/WeakTopics";
 import SessionsList from "../components/student/SessionsList";
 // import RAGTestPage from "../components/student/RAGTestPage";  // RAG detached
-import { isAuthenticated, isStudent } from "../services/auth";
+import { isAuthenticated } from "../services/auth";
 
-// Protected route wrapper
 function ProtectedStudentRoute({ children }) {
     if (!isAuthenticated()) {
         return <Navigate to="/login" replace />;
-    }
-    if (!isStudent()) {
-        return <Navigate to="/teacher" replace />;
     }
     return children;
 }

@@ -1,0 +1,22 @@
+.architecture-shell {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    background:
+        radial-gradient(circle at top left, rgba(25, 92, 79, 0.08), transparent 22%),
+        linear-gradient(180deg, #f7faf9 0%, #f2f7f8 100%);
+}
+
+.architecture-shell__main {
+    flex: 1;
+    width: min(1440px, calc(100% - 48px));
+    margin: 0 auto;
+    padding: 32px 0 40px;
+}
+
+@media (max-width: 768px) {
+    .architecture-shell__main {
+        width: min(100% - 24px, 1440px);
+        padding: 20px 0 28px;
+    }
+}

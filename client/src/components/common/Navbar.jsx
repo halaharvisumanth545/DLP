@@ -8,6 +8,7 @@ import "./Navbar.css";
 export default function Navbar() {
     const user = getCurrentUser();
     const authenticated = isAuthenticated();
+    const profilePath = ROUTES.STUDENT.PROFILE;
 
     // Always enforce light mode
     useEffect(() => {
@@ -36,7 +37,7 @@ export default function Navbar() {
                         <>
                             <div className="navbar-user">
                                 <div className="user-avatar" style={{ overflow: "hidden" }}>
-                                    <Link to={`/${user?.role}/profile`} style={{ textDecoration: 'none', color: 'inherit', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                    <Link to={profilePath} style={{ textDecoration: 'none', color: 'inherit', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                         {user?.profilePicture ? (
                                             <img src={user.profilePicture} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />
                                         ) : (
@@ -45,9 +46,8 @@ export default function Navbar() {
                                     </Link>
                                 </div>
                                 <div className="user-info">
-                                    <Link to={`/${user?.role}/profile`} style={{ textDecoration: 'none', color: 'inherit', display: 'flex', flexDirection: 'column' }}>
+                                    <Link to={profilePath} style={{ textDecoration: 'none', color: 'inherit', display: 'flex', flexDirection: 'column' }}>
                                         <span className="user-name">{user?.name}</span>
-                                        <span className="user-role">{user?.role}</span>
                                     </Link>
                                 </div>
                             </div>

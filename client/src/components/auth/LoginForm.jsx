@@ -25,15 +25,8 @@ export default function LoginForm() {
         setError("");
 
         try {
-            const response = await login(formData.email, formData.password);
-            console.log("Login successful:", response);
-
-            // Use window.location for reliable navigation after localStorage is set
-            if (response.user.role === "teacher") {
-                window.location.href = ROUTES.TEACHER.HOME;
-            } else {
-                window.location.href = ROUTES.STUDENT.HOME;
-            }
+            await login(formData.email, formData.password);
+            window.location.href = ROUTES.STUDENT.HOME;
         } catch (err) {
             console.error("Login error:", err);
             setError(parseError(err));

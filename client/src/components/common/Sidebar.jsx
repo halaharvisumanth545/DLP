@@ -10,6 +10,7 @@ import {
     ClipboardIcon,
     TargetIcon,
     ChartIcon,
+    LayersIcon,
     LogoutIcon
 } from "./Icons";
 import "./Sidebar.css";
@@ -23,6 +24,7 @@ const iconMap = {
     clipboard: ClipboardIcon,
     target: TargetIcon,
     chart: ChartIcon,
+    layers: LayersIcon,
 };
 
 export default function Sidebar() {

@@ -31,20 +31,16 @@ export const QUESTION_TYPES = {
     TRUE_FALSE: "true-false",
 };
 
-// User roles
-export const USER_ROLES = {
-    STUDENT: "student",
-    TEACHER: "teacher",
-};
-
 // Routes
 export const ROUTES = {
     HOME: "/",
+    ARCHITECTURE: "/architecture",
     LOGIN: "/login",
     REGISTER: "/register",
     STUDENT: {
         HOME: "/student",
         DASHBOARD: "/student/dashboard",
+        PROFILE: "/student/profile",
         SYLLABI: "/student/syllabi",
         UPLOAD_SYLLABUS: "/student/upload-syllabus",
         MATERIAL_LOAD: "/student/material-load",
@@ -57,10 +53,6 @@ export const ROUTES = {
         ANALYTICS: "/student/analytics",
         RESULTS: "/student/results",
         SESSIONS: "/student/sessions",
-    },
-    TEACHER: {
-        HOME: "/teacher",
-        DASHBOARD: "/teacher/dashboard",
     },
 };
 

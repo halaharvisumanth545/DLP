@@ -1,55 +1,66 @@
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
+import crypto from "crypto";
 import { User } from "../models/User.js";
 import { Analytics } from "../models/Analytics.js";
+import { sendPasswordResetEmail } from "../services/emailService.js";
+
+function toStudentAppUser(user) {
+    if (!user) {
+        return null;
+    }
+
+    const userObject = typeof user.toObject === "function" ? user.toObject() : user;
+
+    return {
+        ...userObject,
+        role: "student",
+    };
+}
 
 // Register new user
 export async function register(req, res) {
     try {
-        const { name, email, password, role = "student" } = req.body;
+        const { name, email, password } = req.body;
 
-        // Validate input
         if (!name || !email || !password) {
             return res.status(400).json({ error: "Name, email, and password are required" });
         }
 
-        // Check if user already exists
         const identifier = email.toLowerCase().trim();
         const existingUser = await User.findOne({ email: identifier });
         if (existingUser) {
             return res.status(409).json({ error: "User with this email already exists" });
         }
 
-        // Hash password
         const saltRounds = 10;
         const passwordHash = await bcrypt.hash(password, saltRounds);
 
-        // Create user
         const user = await User.create({
             name,
             email: identifier,
             passwordHash,
-            role,
+            role: "student",
         });
 
-        // Create initial analytics record for the user
         await Analytics.create({ userId: user._id });
 
-        // Generate JWT token
         const token = jwt.sign(
-            { userId: user._id, role: user.role },
+            { userId: user._id },
             process.env.JWT_SECRET,
             { expiresIn: "7d" }
         );
+
+        const appUser = toStudentAppUser(user);
 
         res.status(201).json({
             message: "User registered successfully",
             token,
             user: {
-                id: user._id,
-                name: user.name,
-                email: user.email,
-                role: user.role,
+                id: appUser._id,
+                name: appUser.name,
+                email: appUser.email,
+                role: appUser.role,
             },
         });
     } catch (error) {
@@ -57,9 +68,6 @@ export async function register(req, res) {
         res.status(500).json({ error: "Failed to register user" });
     }
 }
-
-import crypto from "crypto";
-import { sendPasswordResetEmail } from "../services/emailService.js";
 
 // Request password reset
 export async function forgotPassword(req, res) {
@@ -72,34 +80,23 @@ export async function forgotPassword(req, res) {
         const identifier = email.toLowerCase().trim();
         const user = await User.findOne({ email: identifier });
 
-        // We always return 200 even if user not found, for security (prevent email enumeration)
         if (!user) {
             return res.json({ message: "If that email exists, a reset link has been sent." });
         }
 
-        // Generate a random reset token
-        const resetToken = crypto.randomBytes(32).toString('hex');
-
-        // Hash it before saving to DB
-        const hashedToken = crypto.createHash('sha256').update(resetToken).digest('hex');
-
-        // Set expiry to 30 minutes from now
+        const resetToken = crypto.randomBytes(32).toString("hex");
+        const hashedToken = crypto.createHash("sha256").update(resetToken).digest("hex");
         const tokenExpiry = new Date(Date.now() + 30 * 60 * 1000);
 
-        // Update user
         user.resetToken = hashedToken;
         user.resetTokenExpiry = tokenExpiry;
         await user.save();
 
-        // Create reset URL - in a real app this points to frontend route
         const clientUrl = process.env.CLIENT_URL || "http://localhost:5173";
         const resetUrl = `${clientUrl}/reset-password?token=${resetToken}`;
-
-        // Send email
         const emailSent = await sendPasswordResetEmail(user.email, resetUrl);
 
         if (!emailSent) {
-            // Revert DB changes if email failed
             user.resetToken = undefined;
             user.resetTokenExpiry = undefined;
             await user.save();
@@ -122,25 +119,20 @@ export async function resetPassword(req, res) {
             return res.status(400).json({ error: "Token and new password are required" });
         }
 
-        // Hash the incoming raw token to compare with DB
-        const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
+        const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
 
-        // Find user with this token and ensure it hasn't expired
-        // Mongoose format for "expiry > now"
         const user = await User.findOne({
             resetToken: hashedToken,
-            resetTokenExpiry: { $gt: new Date() }
+            resetTokenExpiry: { $gt: new Date() },
         });
 
         if (!user) {
             return res.status(400).json({ error: "Invalid or expired reset token" });
         }
 
-        // Hash new password
         const saltRounds = 10;
         const passwordHash = await bcrypt.hash(newPassword, saltRounds);
 
-        // Update password and clear reset fields
         user.passwordHash = passwordHash;
         user.resetToken = undefined;
         user.resetTokenExpiry = undefined;
@@ -172,17 +164,14 @@ export async function editPassword(req, res) {
             return res.status(500).json({ error: "User account misconfigured" });
         }
 
-        // Verify current password
         const isValidPassword = await bcrypt.compare(currentPassword, storedPassword);
         if (!isValidPassword) {
             return res.status(401).json({ error: "Incorrect current password" });
         }
 
-        // Hash new password
         const saltRounds = 10;
         const passwordHash = await bcrypt.hash(newPassword, saltRounds);
 
-        // Save
         user.passwordHash = passwordHash;
         await user.save();
 
@@ -198,18 +187,15 @@ export async function login(req, res) {
     try {
         const { email, password } = req.body;
 
-        // Validate input
         if (!email || !password) {
             return res.status(400).json({ error: "Email/Username and password are required" });
         }
 
-        // Find user by email or username
         const identifier = email.toLowerCase().trim();
         const user = await User.findOne({
-            $or: [{ email: identifier }, { username: identifier }]
+            $or: [{ email: identifier }, { username: identifier }],
         });
 
-        // Debug logging
         console.log("Login attempt for:", email);
         console.log("User found:", user ? "Yes" : "No");
         if (user) {
@@ -220,36 +206,35 @@ export async function login(req, res) {
             return res.status(401).json({ error: "Invalid email/username or password" });
         }
 
-        // Check which password field exists
         const storedPassword = user.passwordHash || user.password;
         if (!storedPassword) {
             console.error("No password field found in user document");
             return res.status(500).json({ error: "User account misconfigured" });
         }
 
-        // Verify password
         const isValidPassword = await bcrypt.compare(password, storedPassword);
         if (!isValidPassword) {
             return res.status(401).json({ error: "Invalid email/username or password" });
         }
 
-        // Generate JWT token
         const token = jwt.sign(
-            { userId: user._id, role: user.role },
+            { userId: user._id },
             process.env.JWT_SECRET,
             { expiresIn: "7d" }
         );
+
+        const appUser = toStudentAppUser(user);
 
         res.json({
             message: "Login successful",
             token,
             user: {
-                id: user._id,
-                name: user.name,
-                username: user.username,
-                email: user.email,
-                role: user.role,
-                profilePicture: user.profilePicture,
+                id: appUser._id,
+                name: appUser.name,
+                username: appUser.username,
+                email: appUser.email,
+                role: appUser.role,
+                profilePicture: appUser.profilePicture,
             },
         });
     } catch (error) {
@@ -266,7 +251,7 @@ export async function getProfile(req, res) {
             return res.status(404).json({ error: "User not found" });
         }
 
-        res.json({ user });
+        res.json({ user: toStudentAppUser(user) });
     } catch (error) {
         console.error("Get profile error:", error);
         res.status(500).json({ error: "Failed to get profile" });
@@ -291,12 +276,11 @@ export async function updateProfile(req, res) {
             branch,
             countryCode,
             mobileNumber,
-            standard // Kept for backward compatibility handling
+            standard,
         } = req.body;
 
-        // Ensure username is unique if provided
         let safeUsername = username ? username.toLowerCase().trim() : undefined;
-        if (safeUsername === "") safeUsername = undefined; // treat empty string as absent
+        if (safeUsername === "") safeUsername = undefined;
 
         if (safeUsername) {
             const existingUser = await User.findOne({ username: safeUsername });
@@ -305,7 +289,6 @@ export async function updateProfile(req, res) {
             }
         }
 
-        // Ensure email is unique if provided
         let safeEmail = email ? email.toLowerCase().trim() : undefined;
         if (safeEmail === "") safeEmail = undefined;
 
@@ -316,9 +299,6 @@ export async function updateProfile(req, res) {
             }
         }
 
-        // Construct the full name if name parts are provided
-        // But if they just submit a generic name (backward compatible), we use that.
-        // We'll prioritize the parts if any of them are provided.
         let name = req.body.name;
         if (firstName || lastName) {
             const parts = [firstName, middleName, lastName].filter(Boolean);
@@ -335,7 +315,6 @@ export async function updateProfile(req, res) {
         if (safeUsername !== undefined) {
             updateData.username = safeUsername;
         } else if (username === "") {
-            // If the user actively clears it out, we unset it from the DB
             updateData.$unset = { username: 1 };
         }
         if (profilePicture !== undefined) updateData.profilePicture = profilePicture;
@@ -348,7 +327,6 @@ export async function updateProfile(req, res) {
         if (countryCode !== undefined) updateData.countryCode = countryCode;
         if (mobileNumber !== undefined) updateData.mobileNumber = mobileNumber;
 
-        // Clean up legacy standard and college if present
         if (standard === "" || standard === null || (course && semester)) {
             updateData.$unset = { ...updateData.$unset, standard: 1 };
         } else if (standard !== undefined) {
@@ -371,7 +349,7 @@ export async function updateProfile(req, res) {
             return res.status(404).json({ error: "User not found" });
         }
 
-        res.json({ user });
+        res.json({ user: toStudentAppUser(user) });
     } catch (error) {
         console.error("Update profile error:", error);
         res.status(500).json({ error: "Failed to update profile" });

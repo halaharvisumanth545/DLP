@@ -1,6 +1,5 @@
 import express from "express";
 import { authMiddleware } from "../middleware/authMiddleware.js";
-import { requireRole } from "../middleware/roleMiddleware.js";
 import {
     getDashboard,
     getSyllabi,
@@ -37,9 +36,8 @@ import {
 
 const router = express.Router();
 
-// All routes require authentication and student role
+// All routes require authentication
 router.use(authMiddleware);
-router.use(requireRole("student"));
 
 // Dashboard
 router.get("/dashboard", getDashboard);

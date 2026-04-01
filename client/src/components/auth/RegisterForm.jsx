@@ -12,7 +12,6 @@ export default function RegisterForm() {
         email: "",
         password: "",
         confirmPassword: "",
-        role: "student",
     });
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
@@ -37,19 +36,13 @@ export default function RegisterForm() {
         }
 
         try {
-            const response = await register({
+            await register({
                 name: formData.name,
                 email: formData.email,
                 password: formData.password,
-                role: formData.role,
             });
 
-            // Redirect based on role
-            if (response.user.role === "teacher") {
-                navigate(ROUTES.TEACHER.HOME);
-            } else {
-                navigate(ROUTES.STUDENT.HOME);
-            }
+            navigate(ROUTES.STUDENT.HOME);
         } catch (err) {
             setError(parseError(err));
         } finally {
@@ -93,26 +86,6 @@ export default function RegisterForm() {
                             placeholder="Enter your email"
                             required
                         />
-                    </div>
-
-                    <div className="form-group">
-                        <label htmlFor="role">I am a</label>
-                        <div className="role-selector">
-                            <button
-                                type="button"
-                                className={`role-btn ${formData.role === "student" ? "active" : ""}`}
-                                onClick={() => setFormData({ ...formData, role: "student" })}
-                            >
-                                <span>🎓</span> Student
-                            </button>
-                            <button
-                                type="button"
-                                className={`role-btn ${formData.role === "teacher" ? "active" : ""}`}
-                                onClick={() => setFormData({ ...formData, role: "teacher" })}
-                            >
-                                <span>👨‍🏫</span> Teacher
-                            </button>
-                        </div>
                     </div>
 
                     <div className="form-group">
